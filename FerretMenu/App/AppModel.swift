@@ -5,6 +5,7 @@ import Observation
 /// Where the sign-in is kept: the Keychain, or a stand-in for tests.
 protocol SessionKeeping: Sendable {
     func load() -> Session?
+    func exists() -> Bool
     func save(_ session: Session)
     func clear()
 }
@@ -57,6 +58,8 @@ final class AppModel {
     var openSettings: () -> Void = {}
 
     let defaults: UserDefaults
+    /// A newer Ferret Menu on GitHub (checked daily; FerretMenuApp starts it).
+    let updates: Updates
     private let store: SessionKeeping
     private let urlSession: URLSession?
     private var thumbs: [String: NSImage] = [:]
@@ -68,12 +71,15 @@ final class AppModel {
         self.store = store
         self.defaults = defaults
         self.urlSession = urlSession
+        updates = Updates(defaults: defaults)
         policy = NotificationPolicy(known: nil)
     }
 
     // MARK: - Who's signed in
 
     var signedIn: Bool { session != nil }
+    /// Whether a sign-in is saved (without reading it, so no Keychain prompt).
+    var hasKeptSession: Bool { store.exists() }
     var server: URL? { session?.server }
     var householdName: String? { me?.household?.name ?? summary?.household }
     /// Viewers and read-only sign-ins can look but not add.
@@ -87,7 +93,12 @@ final class AppModel {
 
     /// Picks up a kept sign-in, then keeps the bell fresh.
     func start() {
-        if let kept = store.load() { use(kept) }
+        // Off the main thread: if macOS asks whether the app may use its Keychain item, the menu bar stays alive.
+        let store = store
+        Task { [weak self] in
+            let kept = await Task.detached { store.load() }.value
+            if let kept, let self, self.session == nil { self.use(kept) }
+        }
         ticker?.cancel()
         ticker = Task { [weak self] in
             while !Task.isCancelled {
@@ -288,6 +299,22 @@ final class AppModel {
     static func describe(_ error: Error) -> String {
         (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
     }
+
+    // MARK: - Updates
+
+    /// The update to offer in the window: none once "Later" was chosen for that version.
+    var offeredUpdate: AvailableUpdate? {
+        guard let update = updates.available, defaults.string(forKey: "updateLater") != update.version else { return nil }
+        return update
+    }
+
+    func laterForUpdate() {
+        defaults.set(updates.available?.version, forKey: "updateLater")
+        laterTick += 1
+    }
+
+    /// Bumped so the window notices "Later" (UserDefaults isn't observed).
+    private(set) var laterTick = 0
 
     // MARK: - Remembered per server
 

@@ -59,6 +59,7 @@ private struct GeneralSettings: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+            UpdateSettings(updates: model.updates)
         }
         .formStyle(.grouped)
         .task {
@@ -163,6 +164,42 @@ private struct AccountSettings: View {
             }
         } message: {
             Text("You'll need to sign in again to use Ferret Menu.")
+        }
+    }
+}
+
+private struct UpdateSettings: View {
+    @Bindable var updates: Updates
+
+    var body: some View {
+        Section {
+            Toggle("Check for updates once a day", isOn: $updates.automatic)
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Version \(Version.running.description)")
+                    if let update = updates.available {
+                        Text("Version \(update.version) is available.").font(.caption).foregroundStyle(Color.accentColor)
+                    } else if let result = updates.lastResult {
+                        Text(result).font(.caption).foregroundStyle(.secondary)
+                    } else if let when = updates.lastChecked {
+                        Text("Checked \(when.formatted(.relative(presentation: .named)))").font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                Spacer()
+                if let update = updates.available {
+                    Button("Download") { NSWorkspace.shared.open(update.page) }
+                } else {
+                    Button {
+                        Task { await updates.check() }
+                    } label: {
+                        if updates.checking { ProgressView().controlSize(.small) } else { Text("Check Now") }
+                    }
+                    .disabled(updates.checking)
+                }
+            }
+            Text("Asks GitHub for the latest release; nothing about you or your Ferret is sent.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 }

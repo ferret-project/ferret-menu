@@ -144,6 +144,7 @@ final class MemoryStore: SessionKeeping, @unchecked Sendable {
     var session: Session?
     init(_ session: Session?) { self.session = session }
     func load() -> Session? { session }
+    func exists() -> Bool { session != nil }
     func save(_ session: Session) { self.session = session }
     func clear() { session = nil }
 }
@@ -177,6 +178,10 @@ final class MemoryStore: SessionKeeping, @unchecked Sendable {
     }
 
     private func settle(_ model: AppModel) async {
+        // The kept sign-in is read in the background first.
+        for _ in 0 ..< 200 where !model.signedIn && model.message == nil {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
         for _ in 0 ..< 200 where model.loading || model.summary == nil && model.message == nil && model.signedIn {
             try? await Task.sleep(for: .milliseconds(10))
         }
@@ -271,5 +276,44 @@ final class MemoryStore: SessionKeeping, @unchecked Sendable {
         }
         let revoke = try #require(StubServer.seen.first { $0.path == "/api/auth/oauth2/revoke" })
         #expect(String(decoding: revoke.body ?? Data(), as: UTF8.self).contains("token=ferret_rt_test"))
+    }
+}
+
+@Suite struct UpdateTests {
+    @Test func comparesVersionsPartByPart() throws {
+        let v = { (s: String) in try #require(Version(s)) }
+        #expect(try v("v0.10.0") > v("0.9.9"))
+        #expect(try v("1.0") == v("1.0.0"))
+        #expect(try v("0.1.0") < v("v0.1.1"))
+        #expect(Version("nightly") == nil)
+        #expect(Version("1.x") == nil)
+    }
+
+    private func release(_ tag: String, draft: Bool = false, prerelease: Bool = false) -> Data {
+        Data(#"{"tag_name":"\#(tag)","html_url":"https://github.com/ferret-project/ferret-menu/releases/tag/\#(tag)","draft":\#(draft),"prerelease":\#(prerelease)}"#.utf8)
+    }
+
+    @Test func offersOnlyANewerFinishedRelease() throws {
+        let running = try #require(Version("0.1.0"))
+        #expect(Updates.newer(in: release("v0.2.0"), than: running)?.version == "0.2.0")
+        #expect(Updates.newer(in: release("v0.2.0"), than: running)?.page.absoluteString.hasSuffix("/v0.2.0") == true)
+        #expect(Updates.newer(in: release("v0.1.0"), than: running) == nil)
+        #expect(Updates.newer(in: release("v0.0.9"), than: running) == nil)
+        #expect(Updates.newer(in: release("v0.3.0", prerelease: true), than: running) == nil)
+        #expect(Updates.newer(in: release("v0.3.0", draft: true), than: running) == nil)
+        #expect(Updates.newer(in: Data("{}".utf8), than: running) == nil)
+    }
+
+    @MainActor @Test func checksGitHubAndRemembersWhen() async throws {
+        StubServer.routes["GET /repos/ferret-project/ferret-menu/releases/latest"] = (200, #"{"tag_name":"v9.0.0","html_url":"https://github.com/ferret-project/ferret-menu/releases/tag/v9.0.0"}"#)
+        let defaults = UserDefaults(suiteName: "updates-\(UUID().uuidString)")!
+        let updates = Updates(defaults: defaults, session: StubServer.session(), running: Version("0.1.0")!)
+        await updates.check()
+        #expect(updates.available?.version == "9.0.0")
+        #expect(updates.lastChecked != nil)
+        StubServer.routes["GET /repos/ferret-project/ferret-menu/releases/latest"] = (404, #"{"message":"Not Found"}"#)
+        await updates.check()
+        #expect(updates.available == nil)
+        #expect(updates.lastResult == "Up to date")
     }
 }

@@ -28,6 +28,9 @@ struct MainView: View {
             if let message = model.message {
                 MessageBanner(text: message) { model.message = nil }
             }
+            if let update = model.offeredUpdate, model.laterTick >= 0 {
+                UpdateBanner(update: update)
+            }
             if model.unreachable {
                 MessageBanner(text: String(localized: "Can't reach the server. Showing what Ferret said last."), symbol: "wifi.slash", dismiss: nil)
             }
@@ -153,5 +156,30 @@ struct MessageBanner: View {
         }
         .padding(10)
         .background(Color.orange.opacity(0.12))
+    }
+}
+
+/// A newer Ferret Menu is out: download it from its release page, or not now (until the next one).
+struct UpdateBanner: View {
+    @Environment(AppModel.self) private var model
+    let update: AvailableUpdate
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "arrow.down.circle").foregroundStyle(Color.accentColor)
+            Text("Ferret Menu \(update.version) is available.").font(.callout)
+            Spacer(minLength: 0)
+            Button("Later") { model.laterForUpdate() }
+                .buttonStyle(.link)
+                .font(.callout)
+            Button("Download") {
+                NSWorkspace.shared.open(update.page)
+                model.closeWindow()
+            }
+            .controlSize(.small)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(Color.accentColor.opacity(0.1))
     }
 }

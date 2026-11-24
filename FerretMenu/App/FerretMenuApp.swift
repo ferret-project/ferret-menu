@@ -31,6 +31,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         HotKey.shared.action = { [weak menuBar] in menuBar?.toggle() }
         HotKey.shared.register(Preferences.shortcut)
         model.start()
+        model.updates.start()
         #if DEBUG
         DebugHooks.install(model: model, menuBar: menuBar)
         #endif
@@ -38,7 +39,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in await self?.model.refresh() }
         }
-        if !model.signedIn { menuBar.show() }
+        // First run (nothing kept): open the sign-in. Waits a moment for the Keychain read.
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(1.5))
+            if !self.model.signedIn, !self.model.hasKeptSession { menuBar.show() }
+        }
     }
 
     /// The Settings window, in front (a menu bar app isn't active until asked).
