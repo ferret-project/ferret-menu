@@ -73,8 +73,7 @@ enum DebugHooks {
             guard let start = pendingSignIn, let callback = URL(string: argument) else { return }
             do {
                 let tokens = try await OAuth.finish(start, callback: callback)
-                let server = URL(string: start.endpoints.resource)!.deletingLastPathComponent()
-                model.signedIn(Session(server: ServerAddress.parse(server.absoluteString) ?? server, credential: .oauth(tokens)))
+                model.signedIn(Session(server: start.endpoints.server!, credential: .oauth(tokens)))
                 log.notice("oauth-finish signed in, expires \(tokens.expiresAt, privacy: .public)")
             } catch {
                 log.error("oauth-finish failed \(AppModel.describe(error), privacy: .public)")

@@ -111,9 +111,11 @@ struct SignInView: View {
                 model.holdOpen = false
             }
             do {
-                let tokens = try await authorize(server, clientId: model.clientId(for: server), access: accessToken)
-                let session = Session(server: server, credential: .oauth(tokens), access: accessToken)
-                AccessTokenStore(service: AppModel.keychainService).save(accessToken, for: server)
+                let (tokens, home) = try await authorize(server, clientId: model.clientId(for: server), access: accessToken)
+                let session = Session(server: home, credential: .oauth(tokens), access: accessToken)
+                // Check it works before keeping it, so a problem shows here rather than as a sudden sign-out.
+                _ = try await FerretClient(session: session).me()
+                AccessTokenStore(service: AppModel.keychainService).save(accessToken, for: home)
                 model.lastServer = typed
                 model.signedIn(session)
                 model.showWindow()
@@ -130,7 +132,8 @@ struct SignInView: View {
     }
 
     /// Registers once per server; a registration the server no longer knows (its database was reset) is made again.
-    private func authorize(_ server: URL, clientId: String?, access: AccessToken?) async throws -> OAuthTokens {
+    /// Returns the tokens and the server's own address (`https://…` even when `http://…` was typed).
+    private func authorize(_ server: URL, clientId: String?, access: AccessToken?) async throws -> (OAuthTokens, URL) {
         let session = URLSession.ferret(access: access)
         let start = try await OAuth.start(server: server, clientName: Self.clientName, redirectURI: AppModel.redirectURI, knownClientId: clientId, session: session)
         model.saveClientId(start.clientId, for: server)
@@ -147,7 +150,7 @@ struct SignInView: View {
             throw FerretError.cancelled
         }
         do {
-            return try await OAuth.finish(start, callback: callback, session: session)
+            return (try await OAuth.finish(start, callback: callback, session: session), start.endpoints.server ?? server)
         } catch FerretError.server(_, let message) where clientId != nil && message.localizedCaseInsensitiveContains("client") {
             model.saveClientId(nil, for: server)
             return try await authorize(server, clientId: nil, access: access)
