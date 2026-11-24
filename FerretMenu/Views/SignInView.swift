@@ -117,7 +117,7 @@ struct SignInView: View {
                 let session = Session(server: home, credential: .oauth(tokens), access: accessToken)
                 // Check it works before keeping it, so a problem shows here rather than as a sudden sign-out.
                 _ = try await FerretClient(session: session).me()
-                AccessTokenStore(service: AppModel.keychainService).save(accessToken, for: home)
+                try AccessTokenStore(service: AppModel.keychainService).save(accessToken, for: home)
                 model.lastServer = typed
                 model.signedIn(session)
                 model.showWindow()

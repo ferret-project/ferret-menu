@@ -145,7 +145,7 @@ final class MemoryStore: SessionKeeping, @unchecked Sendable {
     init(_ session: Session?) { self.session = session }
     func load() -> Session? { session }
     func exists() -> Bool { session != nil }
-    func save(_ session: Session) { self.session = session }
+    func save(_ session: Session) throws { self.session = session }
     func clear() { session = nil }
 }
 

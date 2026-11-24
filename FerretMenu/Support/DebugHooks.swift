@@ -61,6 +61,18 @@ enum DebugHooks {
             model.signOut()
         case "stage":
             model.stage(PickedFile.from([URL(fileURLWithPath: argument)]))
+        case "stage-sample":
+            // A photo drawn here, in the app's own folder (a script can't put files there), for trying uploads.
+            let size = NSSize(width: 1600, height: 1200)
+            let image = NSImage(size: size, flipped: false) { rect in
+                NSGradient(colors: [.systemOrange, .systemPurple])?.draw(in: rect, angle: 35)
+                return true
+            }
+            guard let tiff = image.tiffRepresentation, let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) else { return }
+            let url = URL(fileURLWithPath: NSTemporaryDirectory()).appending(path: (argument.isEmpty ? "sample" : argument) + ".png")
+            try? png.write(to: url)
+            model.stage(PickedFile.from([url]))
+            log.notice("staged sample \(png.count) bytes")
         case "add":
             do {
                 let (item, failed) = try await model.add(name: argument, placeId: nil, quantity: nil, files: model.staged)

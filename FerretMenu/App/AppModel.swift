@@ -6,7 +6,7 @@ import Observation
 protocol SessionKeeping: Sendable {
     func load() -> Session?
     func exists() -> Bool
-    func save(_ session: Session)
+    func save(_ session: Session) throws
     func clear()
 }
 
@@ -130,9 +130,14 @@ final class AppModel {
     }
 
     func signedIn(_ session: Session) {
-        store.save(session)
         message = nil
         use(session)
+        keep(session)
+    }
+
+    /// Keeps the sign-in for the next launch; says so when the Keychain won't (it still works until then).
+    private func keep(_ session: Session) {
+        do { try store.save(session) } catch { show(error) }
     }
 
     /// Ends the sign-in here and, for an app sign-in, on the server.
@@ -147,7 +152,9 @@ final class AppModel {
     private func use(_ session: Session) {
         self.session = session
         policy = NotificationPolicy(known: knownUrgent(for: session.server))
-        client = FerretClient(session: session, urlSession: urlSession) { [weak self] changed in
+        // The kept session is read again before a refresh, so tokens are never used up twice.
+        let store = store
+        client = FerretClient(session: session, urlSession: urlSession, reload: { store.load() }) { [weak self] changed in
             Task { @MainActor in self?.sessionChanged(changed) }
         }
         Task { await refresh() }
@@ -161,7 +168,7 @@ final class AppModel {
             return
         }
         session = changed
-        store.save(changed)
+        keep(changed)
     }
 
     private func reset() {
@@ -265,8 +272,8 @@ final class AppModel {
         var failed: [String] = []
         for file in files {
             do {
-                let data = try Data(contentsOf: file.url)
-                _ = try await client.addFile(to: itemId, data: data, filename: file.name, contentType: file.contentType, kind: file.kind)
+                // Streamed from the file, never read into memory whole.
+                _ = try await client.addFile(to: itemId, fileAt: file.url, filename: file.name, contentType: file.contentType, kind: file.kind)
             } catch {
                 failed.append("\(file.name): \(Self.describe(error))")
             }
