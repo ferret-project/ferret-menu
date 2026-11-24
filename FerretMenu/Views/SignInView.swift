@@ -45,7 +45,7 @@ struct SignInView: View {
                         TextField(text: $address, prompt: Text(verbatim: "ferret.example.com")) { Text("Server address") }
                             .textFieldStyle(.roundedBorder)
                             .onSubmit(signIn)
-                        Text("Your own Ferret's address, such as ferret.example.com or 192.168.1.20:8787. Leave it empty for the hosted Ferret.")
+                        Text("Your own Ferret's address, such as ferret.example.com. On plain HTTP, type http:// too: http://192.168.1.20:8787. Leave it empty for the hosted Ferret.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)

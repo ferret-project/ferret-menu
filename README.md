@@ -24,8 +24,8 @@ change things (or only search and ask). It never sees your password and takes no
 Ferret under **Settings → Claude & API → Connected apps**, where you can disconnect it; signing out of Ferret Menu
 ends its sign-in on the server too. The sign-in is kept in your Mac's Keychain.
 
-Works with the hosted Ferret and your own: type its address (`ferret.example.com`, or `192.168.1.20:8787` on your
-home network). A Ferret behind Cloudflare Access needs a service token (under **Cloudflare Access** on the sign-in
+Works with the hosted Ferret and your own: type its address (`ferret.example.com`). An address is HTTPS unless you
+type `http://`, so a Ferret on plain HTTP on your home network is `http://192.168.1.20:8787`. A Ferret behind Cloudflare Access needs a service token (under **Cloudflare Access** on the sign-in
 screen).
 
 Needs **macOS 26** and **Ferret 2026.11.28 or newer**.

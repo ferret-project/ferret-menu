@@ -3,14 +3,7 @@ import FerretKit
 import Observation
 
 /// Where the sign-in is kept: the Keychain, or a stand-in for tests.
-protocol SessionKeeping: Sendable {
-    func load() -> Session?
-    func exists() -> Bool
-    func save(_ session: Session) throws
-    func clear()
-}
-
-extension SessionStore: SessionKeeping {}
+typealias SessionKeeping = SessionKeeper
 
 /// The menu bar window's screens.
 enum Screen: Hashable {
@@ -152,15 +145,16 @@ final class AppModel {
     private func use(_ session: Session) {
         self.session = session
         policy = NotificationPolicy(known: knownUrgent(for: session.server))
-        // The kept session is read again before a refresh, so tokens are never used up twice.
-        let store = store
-        client = FerretClient(session: session, urlSession: urlSession, reload: { store.load() }) { [weak self] changed in
+        // The client keeps refreshed tokens in the store itself, at once, and reads it before refreshing.
+        client = FerretClient(session: session, store: store, urlSession: urlSession, onKeepFailed: { [weak self] error in
+            Task { @MainActor in self?.show(error) }
+        }) { [weak self] changed in
             Task { @MainActor in self?.sessionChanged(changed) }
         }
         Task { await refresh() }
     }
 
-    /// FerretKit refreshed the tokens (keep them) or the server ended the sign-in (nil).
+    /// FerretKit refreshed the tokens (already kept) or the server ended the sign-in (nil).
     private func sessionChanged(_ changed: Session?) {
         guard let changed else {
             reset()
@@ -168,7 +162,6 @@ final class AppModel {
             return
         }
         session = changed
-        keep(changed)
     }
 
     private func reset() {
