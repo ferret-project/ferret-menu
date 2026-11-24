@@ -66,7 +66,8 @@ Debug builds can be driven from a script for checking changes without clicking (
 
 ## Privacy
 
-Ferret Menu talks only to your Ferret server. It keeps the sign-in in the Keychain and a few settings on your Mac,
-and nothing else: no analytics, no crash reports, nothing sent anywhere else.
+Ferret Menu talks to your Ferret server, and once a day asks GitHub whether there's a newer Ferret Menu (nothing
+about you or your Ferret is sent; switch it off in Settings). It keeps the sign-in in the Keychain and a few settings
+on your Mac, and nothing else: no analytics, no crash reports.
 
 MIT licensed.
