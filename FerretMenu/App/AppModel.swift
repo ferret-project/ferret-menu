@@ -23,6 +23,14 @@ enum Screen: Hashable {
 @Observable
 final class AppModel {
     static let keychainService = "us.digitalempire.ferret.menu"
+    /// Where the sign-in is kept. Debug builds can be pointed elsewhere (FERRET_MENU_KEYCHAIN_SERVICE), so trying a
+    /// build never touches the real sign-in.
+    static var sessionService: String {
+        #if DEBUG
+        if let other = ProcessInfo.processInfo.environment["FERRET_MENU_KEYCHAIN_SERVICE"] { return other }
+        #endif
+        return keychainService
+    }
     /// The app's own redirect address (its scheme is caught by the sign-in window, so it needs no URL type).
     static let callbackScheme = "us.digitalempire.ferret.menu"
     static let redirectURI = OAuth.redirectURI(scheme: callbackScheme)
@@ -58,8 +66,8 @@ final class AppModel {
     var openSettings: () -> Void = {}
 
     let defaults: UserDefaults
-    /// A newer Ferret Menu on GitHub (checked daily; FerretMenuApp starts it).
-    let updates: Updates
+    /// Sparkle's updater (set at launch; none in unit tests).
+    var updates: Updates?
     private let store: SessionKeeping
     private let urlSession: URLSession?
     private var thumbs: [String: NSImage] = [:]
@@ -67,11 +75,10 @@ final class AppModel {
     private var ticker: Task<Void, Never>?
     private var policy: NotificationPolicy
 
-    init(store: SessionKeeping = SessionStore(service: AppModel.keychainService), defaults: UserDefaults = .standard, urlSession: URLSession? = nil) {
+    init(store: SessionKeeping = SessionStore(service: AppModel.sessionService), defaults: UserDefaults = .standard, urlSession: URLSession? = nil) {
         self.store = store
         self.defaults = defaults
         self.urlSession = urlSession
-        updates = Updates(defaults: defaults)
         policy = NotificationPolicy(known: nil)
     }
 
@@ -299,22 +306,6 @@ final class AppModel {
     static func describe(_ error: Error) -> String {
         (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
     }
-
-    // MARK: - Updates
-
-    /// The update to offer in the window: none once "Later" was chosen for that version.
-    var offeredUpdate: AvailableUpdate? {
-        guard let update = updates.available, defaults.string(forKey: "updateLater") != update.version else { return nil }
-        return update
-    }
-
-    func laterForUpdate() {
-        defaults.set(updates.available?.version, forKey: "updateLater")
-        laterTick += 1
-    }
-
-    /// Bumped so the window notices "Later" (UserDefaults isn't observed).
-    private(set) var laterTick = 0
 
     // MARK: - Remembered per server
 

@@ -11,16 +11,22 @@ settings:
     SWIFT_VERSION: "6.0"
     SWIFT_STRICT_CONCURRENCY: complete
     MARKETING_VERSION: "0.1.0"
-    CURRENT_PROJECT_VERSION: "1"
+    # Sparkle compares CFBundleVersion between releases: it is the marketing version.
+    CURRENT_PROJECT_VERSION: $(MARKETING_VERSION)
     # Signed to run locally (no Apple developer team): see the README for opening a downloaded build.
     CODE_SIGN_STYLE: Manual
     CODE_SIGN_IDENTITY: "-"
     DEVELOPMENT_TEAM: ""
-    ENABLE_HARDENED_RUNTIME: YES
+    # Off when signed to run locally: without a team, the hardened runtime refuses the bundled Sparkle framework.
+    # scripts/release.sh turns it on when it signs with a Developer ID (notarizing needs it).
+    ENABLE_HARDENED_RUNTIME: NO
     ENABLE_USER_SCRIPT_SANDBOXING: YES
     LOCALIZATION_PREFERS_STRING_CATALOGS: YES
     SWIFT_EMIT_LOC_STRINGS: YES
 packages:
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    from: 2.10.1
   FerretKit:
     # Until ferret-kit is on GitHub: a checkout beside this one.
     path: ../ferret-kit
@@ -32,6 +38,7 @@ targets:
       - FerretMenu
     dependencies:
       - package: FerretKit
+      - package: Sparkle
     settings:
       base:
         PRODUCT_NAME: Ferret Menu
@@ -55,12 +62,24 @@ targets:
         # Self-hosted Ferrets are often plain HTTP on a LAN address (http://192.168.1.20:8787).
         NSAppTransportSecurity:
           NSAllowsArbitraryLoads: true
+        # Updates (Sparkle): the latest release's feed, checked daily; updates must be signed with this key.
+        SUFeedURL: https://github.com/ferret-project/ferret-menu/releases/latest/download/appcast.xml
+        SUPublicEDKey: vDfxxOnE5K/LdkTy2oCt6V6Z3LFSWVF7vpKsDqew9nQ=
+        SUEnableAutomaticChecks: true
+        SUScheduledCheckInterval: 86400
+        SUVerifyUpdateBeforeExtraction: true
+        # Sandboxed: Sparkle installs through its launcher service (downloads use the app's own network access).
+        SUEnableInstallerLauncherService: true
     entitlements:
       path: FerretMenu/FerretMenu.entitlements
       properties:
         com.apple.security.app-sandbox: true
         com.apple.security.network.client: true
         com.apple.security.files.user-selected.read-only: true
+        # Sparkle's installer, reached from inside the sandbox.
+        com.apple.security.temporary-exception.mach-lookup.global-name:
+          - $(PRODUCT_BUNDLE_IDENTIFIER)-spks
+          - $(PRODUCT_BUNDLE_IDENTIFIER)-spki
   FerretMenuTests:
     type: bundle.unit-test
     platform: macOS

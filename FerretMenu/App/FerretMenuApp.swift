@@ -31,7 +31,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         HotKey.shared.action = { [weak menuBar] in menuBar?.toggle() }
         HotKey.shared.register(Preferences.shortcut)
         model.start()
-        model.updates.start()
+        model.updates = Updates(start: true)
         #if DEBUG
         DebugHooks.install(model: model, menuBar: menuBar)
         #endif

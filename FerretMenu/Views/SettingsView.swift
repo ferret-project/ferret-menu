@@ -59,7 +59,7 @@ private struct GeneralSettings: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            UpdateSettings(updates: model.updates)
+            if let updates = model.updates { UpdateSettings(updates: updates) }
         }
         .formStyle(.grouped)
         .task {
@@ -169,37 +169,36 @@ private struct AccountSettings: View {
 }
 
 private struct UpdateSettings: View {
-    @Bindable var updates: Updates
+    let updates: Updates
+    @State private var automatic = true
+    @State private var byItself = false
 
     var body: some View {
         Section {
-            Toggle("Check for updates once a day", isOn: $updates.automatic)
+            Toggle("Check for updates once a day", isOn: $automatic)
+                .onChange(of: automatic) { _, on in updates.automatic = on }
+            Toggle("Install updates automatically", isOn: $byItself)
+                .onChange(of: byItself) { _, on in updates.downloadsByItself = on }
+                .disabled(!automatic)
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Version \(Version.running.description)")
-                    if let update = updates.available {
-                        Text("Version \(update.version) is available.").font(.caption).foregroundStyle(Color.accentColor)
-                    } else if let result = updates.lastResult {
-                        Text(result).font(.caption).foregroundStyle(.secondary)
+                    Text("Version \(Updates.version)")
+                    if let version = updates.available {
+                        Text("Version \(version) is available.").font(.caption).foregroundStyle(Color.accentColor)
                     } else if let when = updates.lastChecked {
                         Text("Checked \(when.formatted(.relative(presentation: .named)))").font(.caption).foregroundStyle(.secondary)
                     }
                 }
                 Spacer()
-                if let update = updates.available {
-                    Button("Download") { NSWorkspace.shared.open(update.page) }
-                } else {
-                    Button {
-                        Task { await updates.check() }
-                    } label: {
-                        if updates.checking { ProgressView().controlSize(.small) } else { Text("Check Now") }
-                    }
-                    .disabled(updates.checking)
-                }
+                Button("Check Now") { updates.checkNow() }
             }
-            Text("Asks GitHub for the latest release; nothing about you or your Ferret is sent.")
+            Text("Automatic updates download in the background and install the next time Ferret Menu quits or your Mac restarts. Updates come from Ferret Menu's GitHub releases and install only when they're signed by Ferret.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+        }
+        .task {
+            automatic = updates.automatic
+            byItself = updates.downloadsByItself
         }
     }
 }

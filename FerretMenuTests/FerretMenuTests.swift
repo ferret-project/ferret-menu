@@ -279,41 +279,15 @@ final class MemoryStore: SessionKeeping, @unchecked Sendable {
     }
 }
 
-@Suite struct UpdateTests {
-    @Test func comparesVersionsPartByPart() throws {
-        let v = { (s: String) in try #require(Version(s)) }
-        #expect(try v("v0.10.0") > v("0.9.9"))
-        #expect(try v("1.0") == v("1.0.0"))
-        #expect(try v("0.1.0") < v("v0.1.1"))
-        #expect(Version("nightly") == nil)
-        #expect(Version("1.x") == nil)
-    }
-
-    private func release(_ tag: String, draft: Bool = false, prerelease: Bool = false) -> Data {
-        Data(#"{"tag_name":"\#(tag)","html_url":"https://github.com/ferret-project/ferret-menu/releases/tag/\#(tag)","draft":\#(draft),"prerelease":\#(prerelease)}"#.utf8)
-    }
-
-    @Test func offersOnlyANewerFinishedRelease() throws {
-        let running = try #require(Version("0.1.0"))
-        #expect(Updates.newer(in: release("v0.2.0"), than: running)?.version == "0.2.0")
-        #expect(Updates.newer(in: release("v0.2.0"), than: running)?.page.absoluteString.hasSuffix("/v0.2.0") == true)
-        #expect(Updates.newer(in: release("v0.1.0"), than: running) == nil)
-        #expect(Updates.newer(in: release("v0.0.9"), than: running) == nil)
-        #expect(Updates.newer(in: release("v0.3.0", prerelease: true), than: running) == nil)
-        #expect(Updates.newer(in: release("v0.3.0", draft: true), than: running) == nil)
-        #expect(Updates.newer(in: Data("{}".utf8), than: running) == nil)
-    }
-
-    @MainActor @Test func checksGitHubAndRemembersWhen() async throws {
-        StubServer.routes["GET /repos/ferret-project/ferret-menu/releases/latest"] = (200, #"{"tag_name":"v9.0.0","html_url":"https://github.com/ferret-project/ferret-menu/releases/tag/v9.0.0"}"#)
-        let defaults = UserDefaults(suiteName: "updates-\(UUID().uuidString)")!
-        let updates = Updates(defaults: defaults, session: StubServer.session(), running: Version("0.1.0")!)
-        await updates.check()
-        #expect(updates.available?.version == "9.0.0")
-        #expect(updates.lastChecked != nil)
-        StubServer.routes["GET /repos/ferret-project/ferret-menu/releases/latest"] = (404, #"{"message":"Not Found"}"#)
-        await updates.check()
-        #expect(updates.available == nil)
-        #expect(updates.lastResult == "Up to date")
+@Suite struct UpdateSettingsTests {
+    /// The app reads updates only from the release feed, signed with the release key, through Sparkle's sandbox
+    /// installer.
+    @Test func infoPlistPointsSparkleAtTheReleases() {
+        let info = Bundle.main.infoDictionary ?? [:]
+        #expect(info["SUFeedURL"] as? String == "https://github.com/ferret-project/ferret-menu/releases/latest/download/appcast.xml")
+        #expect((info["SUPublicEDKey"] as? String)?.count == 44)
+        #expect(info["SUEnableInstallerLauncherService"] as? Bool == true)
+        #expect(info["SUVerifyUpdateBeforeExtraction"] as? Bool == true)
+        #expect(info["CFBundleVersion"] as? String == info["CFBundleShortVersionString"] as? String)
     }
 }

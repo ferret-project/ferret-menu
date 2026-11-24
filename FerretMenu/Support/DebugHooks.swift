@@ -88,8 +88,18 @@ enum DebugHooks {
             if case .oauth(let tokens) = model.session?.credential {
                 log.notice("tokens access=\(String(tokens.accessToken.prefix(14)), privacy: .public)… refresh=\(String((tokens.refreshToken ?? "").prefix(14)), privacy: .public)… expires \(tokens.expiresAt, privacy: .public)")
             }
-        case "update":
-            model.updates.pretend(argument)
+        case "feed":
+            // feed:<url> reads updates from there (empty: the real feed).
+            UserDefaults.standard.set(argument.isEmpty ? nil : argument, forKey: "debugFeedURL")
+            model.updates?.updater.resetUpdateCycle()
+        case "update-background":
+            // Downloads a found update quietly; it installs when the app quits.
+            model.updates?.downloadsByItself = true
+            model.updates?.updater.checkForUpdatesInBackground()
+        case "update-now":
+            model.updates?.checkNow()
+        case "quit":
+            NSApp.terminate(nil)
         case "settings":
             model.openSettings()
         case "snapshot":

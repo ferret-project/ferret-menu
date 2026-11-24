@@ -150,6 +150,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate, NSMenuDelegate {
             menu.addItem(action(String(localized: "Refresh"), #selector(refresh)))
             menu.addItem(.separator())
         }
+        menu.addItem(action(String(localized: "Check for Updates…"), #selector(checkForUpdates)))
         menu.addItem(action(String(localized: "Settings…"), #selector(settings), key: ","))
         menu.addItem(action(String(localized: "Quit Ferret Menu"), #selector(quit), key: "q"))
         item.menu = menu
@@ -169,6 +170,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate, NSMenuDelegate {
     @objc private func openFerret() { model.open("#/") }
     @objc private func refresh() { Task { await model.refresh() } }
     @objc private func settings() { openSettings() }
+    @objc private func checkForUpdates() { model.updates?.checkNow() }
     @objc private func quit() { NSApp.terminate(nil) }
 
     // MARK: - Dropping files on the paw

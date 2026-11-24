@@ -41,6 +41,14 @@ xattr -dr com.apple.quarantine "/Applications/Ferret Menu.app"
 
 Or build it yourself (below): a build of your own opens without any of that.
 
+**Updates** come by themselves: once a day Ferret Menu looks at its latest release and offers the update in its
+window (or **More → Check for Updates…**). Turn on **Settings → Install updates automatically** to have them download
+in the background and install the next time Ferret Menu quits. Updates install only when they're signed with Ferret
+Menu's update key ([Sparkle](https://sparkle-project.org)), and only the first install needs Open Anyway.
+
+After an update, macOS may ask once whether Ferret Menu may use its saved sign-in in your Keychain: choose
+**Always Allow**. (Until Ferret Menu is signed with an Apple Developer ID, macOS treats each version as a new app.)
+
 **Can't see the paw?** On a Mac with a notch, a full menu bar hides the newest icons. ⌃⌥⌘F still opens Ferret Menu
 (from the middle of the menu bar), or make room by ⌘-dragging other icons out of the menu bar.
 
@@ -57,6 +65,10 @@ xcodebuild -scheme FerretMenu -configuration Release -derivedDataPath build buil
 ```
 
 The app is `build/Build/Products/Release/Ferret Menu.app`. Tests: `xcodebuild -scheme FerretMenu test`.
+
+Releases: `scripts/release.sh <version>` builds the zip and the signed update feed into `dist/`; a `v<version>` tag
+runs it on GitHub (`.github/workflows/release.yml`), which also signs with a Developer ID and notarizes once those
+secrets are set.
 
 Talking to Ferret (sign-in, the API, the Keychain) is [FerretKit](https://github.com/ferret-project/ferret-kit),
 shared with Ferret's other Apple apps.

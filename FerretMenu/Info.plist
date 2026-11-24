@@ -35,5 +35,17 @@
 	<string>MIT licensed.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Ferret Menu connects to your own Ferret server on your home network.</string>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>SUEnableInstallerLauncherService</key>
+	<true/>
+	<key>SUFeedURL</key>
+	<string>https://github.com/ferret-project/ferret-menu/releases/latest/download/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>vDfxxOnE5K/LdkTy2oCt6V6Z3LFSWVF7vpKsDqew9nQ=</string>
+	<key>SUScheduledCheckInterval</key>
+	<integer>86400</integer>
+	<key>SUVerifyUpdateBeforeExtraction</key>
+	<true/>
 </dict>
 </plist>

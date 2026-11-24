@@ -1,6 +1,15 @@
-# A tag v<version> builds Ferret Menu (signed to run locally: no Apple developer team), tests it, and publishes
-# Ferret-Menu.zip on the release with SHA256SUMS and GitHub's build attestation
-# (`gh attestation verify Ferret-Menu.zip --repo ferret-project/ferret-menu`).
+# A tag v<version> tests and builds Ferret Menu with scripts/release.sh and publishes Ferret-Menu.zip, appcast.xml
+# (the update feed every installed copy reads: releases/latest/download/appcast.xml) and SHA256SUMS on the release,
+# with GitHub's build attestation (`gh attestation verify Ferret-Menu.zip --repo ferret-project/ferret-menu`).
+#
+# Secrets:
+#   SPARKLE_KEY                  required: the update-signing private key (`generate_keys -x`).
+#   DEVELOPER_ID_P12             optional, base64 of a "Developer ID Application" certificate with its key,
+#   DEVELOPER_ID_P12_PASSWORD    its password, and
+#   DEVELOPER_ID_IDENTITY        its name ("Developer ID Application: Name (TEAMID)"): sign with it.
+#   NOTARY_KEY_P8                optional, an App Store Connect API key (the .p8's text),
+#   NOTARY_KEY_ID, NOTARY_ISSUER its key and issuer ids: notarize and staple (needs the Developer ID too).
+# Without the optional ones the app is signed to run locally, as now.
 name: Release
 on:
   push:
@@ -25,14 +34,37 @@ jobs:
       - name: Version matches the tag
         run: test "v$(grep -E '^ +MARKETING_VERSION:' project.yml | head -1 | sed -E 's/.*"(.*)".*/\1/')" = "${GITHUB_REF_NAME}"
       - name: Test
-        run: xcodebuild -project FerretMenu.xcodeproj -scheme FerretMenu -derivedDataPath build test
-      - name: Build
-        run: xcodebuild -project FerretMenu.xcodeproj -scheme FerretMenu -configuration Release -derivedDataPath build build
-      - name: Package
+        run: xcodebuild -project FerretMenu.xcodeproj -scheme FerretMenu -derivedDataPath build/test test
+      - name: Developer ID certificate
+        env:
+          DEVELOPER_ID_P12: ${{ secrets.DEVELOPER_ID_P12 }}
+          DEVELOPER_ID_P12_PASSWORD: ${{ secrets.DEVELOPER_ID_P12_PASSWORD }}
+        if: env.DEVELOPER_ID_P12 != ''
         run: |
-          mkdir dist
-          ditto -c -k --keepParent "build/Build/Products/Release/Ferret Menu.app" dist/Ferret-Menu.zip
-          cd dist && shasum -a 256 Ferret-Menu.zip > SHA256SUMS
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          password="$(uuidgen)"
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 3600 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          echo "$DEVELOPER_ID_P12" | base64 --decode > "$RUNNER_TEMP/id.p12"
+          security import "$RUNNER_TEMP/id.p12" -k "$keychain" -P "$DEVELOPER_ID_P12_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$password" "$keychain"
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          rm "$RUNNER_TEMP/id.p12"
+      - name: Notary key
+        env:
+          NOTARY_KEY_P8: ${{ secrets.NOTARY_KEY_P8 }}
+        if: env.NOTARY_KEY_P8 != ''
+        run: |
+          printf '%s' "$NOTARY_KEY_P8" > "$RUNNER_TEMP/notary.p8"
+          echo "NOTARY_KEY_FILE=$RUNNER_TEMP/notary.p8" >> "$GITHUB_ENV"
+      - name: Build
+        env:
+          SPARKLE_KEY: ${{ secrets.SPARKLE_KEY }}
+          DEVELOPER_ID_IDENTITY: ${{ secrets.DEVELOPER_ID_P12 != '' && secrets.DEVELOPER_ID_IDENTITY || '' }}
+          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          NOTARY_ISSUER: ${{ secrets.NOTARY_ISSUER }}
+        run: scripts/release.sh "${GITHUB_REF_NAME#v}"
       - uses: actions/attest-build-provenance@v2
         with:
           subject-path: dist/Ferret-Menu.zip
@@ -40,10 +72,17 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          if [ -n "${NOTARY_KEY_FILE:-}" ]; then
+            open_note="Notarized by Apple: it opens like any other app."
+          else
+            open_note="It isn't notarized: the first time, open it with System Settings → Privacy & Security → Open Anyway (see the README). Updates after that install by themselves."
+          fi
           {
-            echo "Download **Ferret-Menu.zip**, unzip it and move Ferret Menu to Applications. It isn't notarized: the first time, open it with System Settings → Privacy & Security → Open Anyway (see the README)."
+            echo "Download **Ferret-Menu.zip**, unzip it and move Ferret Menu to Applications. $open_note"
             echo
-            echo "Needs macOS 26. Check a download: \`shasum -a 256 -c SHA256SUMS\`, and that GitHub built it here: \`gh attestation verify Ferret-Menu.zip --repo ${GITHUB_REPOSITORY}\`."
+            echo "Needs macOS 26. Already installed? Ferret Menu offers this update by itself (or More → Check for Updates…)."
+            echo
+            echo "Check a download: \`shasum -a 256 -c SHA256SUMS\`, and that GitHub built it here: \`gh attestation verify Ferret-Menu.zip --repo ${GITHUB_REPOSITORY}\`."
             echo
             echo "## Changes"
             git log --format='- %s' "$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || git rev-list --max-parents=0 HEAD)..${GITHUB_REF_NAME}"

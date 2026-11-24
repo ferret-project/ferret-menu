@@ -28,8 +28,8 @@ struct MainView: View {
             if let message = model.message {
                 MessageBanner(text: message) { model.message = nil }
             }
-            if let update = model.offeredUpdate, model.laterTick >= 0 {
-                UpdateBanner(update: update)
+            if let version = model.updates?.available {
+                UpdateBanner(version: version)
             }
             if model.unreachable {
                 MessageBanner(text: String(localized: "Can't reach the server. Showing what Ferret said last."), symbol: "wifi.slash", dismiss: nil)
@@ -64,6 +64,10 @@ private struct TabBar: View {
                 Button("Open Ferret") { model.open("#/") }
                 Button("Refresh") { Task { await model.refresh() } }
                 Divider()
+                Button("Check for Updates…") {
+                    model.closeWindow()
+                    model.updates?.checkNow()
+                }
                 Button("Settings…") { model.openSettings() }
                 Button("Quit Ferret Menu") { NSApp.terminate(nil) }
             } label: {
@@ -159,22 +163,19 @@ struct MessageBanner: View {
     }
 }
 
-/// A newer Ferret Menu is out: download it from its release page, or not now (until the next one).
+/// The daily check found a newer Ferret Menu: Sparkle's window shows what's new and installs it.
 struct UpdateBanner: View {
     @Environment(AppModel.self) private var model
-    let update: AvailableUpdate
+    let version: String
 
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: "arrow.down.circle").foregroundStyle(Color.accentColor)
-            Text("Ferret Menu \(update.version) is available.").font(.callout)
+            Text("Ferret Menu \(version) is available.").font(.callout)
             Spacer(minLength: 0)
-            Button("Later") { model.laterForUpdate() }
-                .buttonStyle(.link)
-                .font(.callout)
-            Button("Download") {
-                NSWorkspace.shared.open(update.page)
+            Button("Install…") {
                 model.closeWindow()
+                model.updates?.checkNow()
             }
             .controlSize(.small)
         }
