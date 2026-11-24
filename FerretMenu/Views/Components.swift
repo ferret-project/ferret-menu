@@ -103,38 +103,83 @@ struct ItemRow: View {
     }
 }
 
-/// Something on the bell: what, when, and how pressing it is.
+/// Something on the bell: what, when, and how pressing it is. A maintenance task can be marked done and a loan
+/// returned right here (writers only); everything else opens where Ferret deals with it.
 struct BellRow: View {
     @Environment(AppModel.self) private var model
     let item: AttentionItem
     @State private var hovering = false
 
-    var body: some View {
-        Button {
-            model.open(item.route)
-        } label: {
-            HStack(alignment: .top, spacing: 10) {
-                Image(systemName: Self.symbol(item.kind))
-                    .foregroundStyle(item.isUrgent ? Color.red : Color.orange)
-                    .frame(width: 20)
-                    .padding(.top, 2)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(item.title).lineLimit(2)
-                    if !item.detail.isEmpty {
-                        Text(item.detail).font(.caption).foregroundStyle(.secondary).lineLimit(2)
-                    }
-                }
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
-            .contentShape(Rectangle())
-            .background(RoundedRectangle(cornerRadius: 8).fill(hovering ? Color.primary.opacity(0.08) : .clear))
+    /// What can be done about it here.
+    enum Action {
+        case done, returned
+    }
+
+    var action: Action? {
+        guard model.canEdit else { return nil }
+        switch item.kind {
+        case "maintenance": return .done
+        case "loan": return .returned
+        default: return nil
         }
-        .buttonStyle(.plain)
+    }
+
+    private var open: Bool { model.dealing == item.key }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .top, spacing: 4) {
+                Button(action: go) {
+                    HStack(alignment: .top, spacing: 10) {
+                        Image(systemName: Self.symbol(item.kind))
+                            .foregroundStyle(item.isUrgent ? Color.red : Color.orange)
+                            .frame(width: 20)
+                            .padding(.top, 2)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(item.title).lineLimit(2)
+                            if !item.detail.isEmpty {
+                                Text(item.detail).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                            }
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel(Text(item.isUrgent ? "Urgent: \(item.title)" : item.title))
+                if let action, !open {
+                    Button(action == .done ? "Done…" : "Returned…") { model.dealing = item.key }
+                        .controlSize(.small)
+                        .help(action == .done ? Text("Mark it done") : Text("Mark it back or given back"))
+                }
+            }
+            if open, let action {
+                switch action {
+                case .done: DoneForm(item: item) { model.dealing = nil }
+                case .returned: ReturnedForm(item: item) { model.dealing = nil }
+                }
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(RoundedRectangle(cornerRadius: 8).fill(hovering || open ? Color.primary.opacity(open ? 0.05 : 0.08) : .clear))
         .onHover { hovering = $0 }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(Text(item.isUrgent ? "Urgent: \(item.title)" : item.title))
+        .contextMenu {
+            Button("Open in Ferret") { model.open(item.route) }
+            if let action {
+                Button(action == .done ? "Mark Done…" : "Mark Returned…") { model.dealing = item.key }
+            }
+        }
+    }
+
+    /// The shopping list opens here; everything else in Ferret.
+    private func go() {
+        if item.kind == "shopping" {
+            model.screen = .shopping
+        } else {
+            model.open(item.route)
+        }
     }
 
     static func symbol(_ kind: String) -> String {
@@ -296,5 +341,133 @@ extension FittedScroll where Content == EmptyView {
     @MainActor static var tallest: CGFloat {
         let screen = NSScreen.main?.visibleFrame.height ?? 800
         return max(200, min(560, screen - 200))
+    }
+}
+
+/// Marking a bell item's task done: when, and optionally a note, what it cost and (for maintenance by use) the
+/// counter's reading. The next due date moves on from the day it was done.
+struct DoneForm: View {
+    @Environment(AppModel.self) private var model
+    let item: AttentionItem
+    let close: () -> Void
+    @State private var day = Date()
+    @State private var note = ""
+    @State private var cost = ""
+    @State private var reading = ""
+    @State private var task: MaintenanceTask?
+    @State private var saving = false
+    @State private var failure: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            DatePicker("Done on", selection: $day, in: ...Date(), displayedComponents: .date)
+                .datePickerStyle(.compact)
+            if let usage = task?.usage {
+                TextField(usage.now.map { String(localized: "Reading now (\(usage.unit); last \(Self.number($0)))") } ?? String(localized: "Reading now (\(usage.unit))"), text: $reading)
+                    .textFieldStyle(.roundedBorder)
+            }
+            TextField("Note (optional)", text: $note)
+                .textFieldStyle(.roundedBorder)
+            TextField("What it cost (optional)", text: $cost)
+                .textFieldStyle(.roundedBorder)
+            if let failure {
+                Text(failure).font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
+            }
+            HStack {
+                Spacer()
+                Button("Cancel", action: close).keyboardShortcut(.cancelAction)
+                Button {
+                    save()
+                } label: {
+                    if saving { ProgressView().controlSize(.small) } else { Text("Done") }
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(saving || !costIsAmount || !readingIsNumber)
+            }
+        }
+        .controlSize(.small)
+        .padding(.top, 8)
+        .padding(.leading, 30)
+        .task { task = try? await model.task(item.id) }
+    }
+
+    private var costIsAmount: Bool { cost.trimmingCharacters(in: .whitespaces).isEmpty || Money.cents(from: cost) != nil }
+    private var readingIsNumber: Bool { reading.trimmingCharacters(in: .whitespaces).isEmpty || Self.parse(reading) != nil }
+
+    private func save() {
+        var done = MaintenanceDone()
+        // Today needs no date: the server takes the household's own today.
+        if !Calendar.current.isDateInToday(day) { done.doneOn = Self.isoDay(day) }
+        let note = note.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !note.isEmpty { done.note = note }
+        done.costCents = Money.cents(from: cost)
+        done.reading = Self.parse(reading)
+        saving = true
+        failure = nil
+        Task {
+            defer { saving = false }
+            do {
+                try await model.markDone(item, done)
+                close()
+            } catch {
+                failure = AppModel.describe(error)
+            }
+        }
+    }
+
+    /// `yyyy-mm-dd` on the Mac's calendar.
+    nonisolated static func isoDay(_ date: Date) -> String {
+        let parts = Calendar.current.dateComponents([.year, .month, .day], from: date)
+        return String(format: "%04d-%02d-%02d", parts.year ?? 0, parts.month ?? 0, parts.day ?? 0)
+    }
+
+    nonisolated static func parse(_ text: String) -> Double? {
+        let cleaned = text.filter { $0.isNumber || $0 == "." }
+        guard !cleaned.isEmpty, let value = Double(cleaned), value >= 0 else { return nil }
+        return value
+    }
+
+    nonisolated static func number(_ value: Double) -> String { value.formatted(.number.precision(.fractionLength(0 ... 1))) }
+}
+
+/// Saying a loan is over, asked once more (there's no undo on Ferret's side).
+struct ReturnedForm: View {
+    @Environment(AppModel.self) private var model
+    let item: AttentionItem
+    let close: () -> Void
+    @State private var saving = false
+    @State private var failure: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Mark it back, or given back, as of today?").font(.callout)
+            if let failure {
+                Text(failure).font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
+            }
+            HStack {
+                Spacer()
+                Button("Cancel", action: close).keyboardShortcut(.cancelAction)
+                Button {
+                    saving = true
+                    failure = nil
+                    Task {
+                        defer { saving = false }
+                        do {
+                            try await model.markReturned(item)
+                            close()
+                        } catch {
+                            failure = AppModel.describe(error)
+                        }
+                    }
+                } label: {
+                    if saving { ProgressView().controlSize(.small) } else { Text("Returned") }
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(saving)
+            }
+        }
+        .controlSize(.small)
+        .padding(.top, 8)
+        .padding(.leading, 30)
     }
 }

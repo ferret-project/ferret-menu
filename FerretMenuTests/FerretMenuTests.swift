@@ -260,6 +260,61 @@ final class MemoryStore: SessionKeeping, @unchecked Sendable {
         #expect(failed[0].contains("Ferret can't keep that kind of file"))
     }
 
+    @Test func doneLeavesTheBellAndSaysWhatWasDone() async throws {
+        StubServer.routes["POST /api/v1/maintenance/t/done"] = (200, #"{"id":"t","title":"Gutters","doneId":"d"}"#)
+        let (model, _, _) = model()
+        model.start()
+        await settle(model)
+        let gutters = try #require(model.attention.first { $0.kind == "maintenance" })
+        // The bell read again after this one still lists it until the server says otherwise; here it's gone.
+        StubServer.routes["GET /api/v1/attention"] = (200, #"{"data":[{"kind":"warranty","severity":"urgent","id":"w","title":"Fridge warranty ends","detail":"tomorrow","itemId":"i1","date":null}]}"#)
+        try await model.markDone(gutters, MaintenanceDone(note: "Cleared", costCents: 4000))
+        #expect(!model.attention.contains { $0.key == gutters.key })
+        let sent = try #require(StubServer.seen.first { $0.path == "/api/v1/maintenance/t/done" })
+        let body = try JSONSerialization.jsonObject(with: sent.body ?? Data()) as? [String: Any]
+        #expect(body?["note"] as? String == "Cleared")
+        #expect(body?["costCents"] as? Int == 4000)
+        #expect(body?["doneOn"] == nil)
+    }
+
+    @Test func aLoanIsMarkedReturned() async throws {
+        StubServer.routes["GET /api/v1/attention"] = (200, #"{"data":[{"kind":"loan","severity":"urgent","id":"l1","title":"Give the ladder back to Pat","detail":"Due today","itemId":"i9","date":null}]}"#)
+        StubServer.routes["POST /api/v1/loans/l1/returned"] = (200, #"{"id":"l1"}"#)
+        let (model, _, _) = model()
+        model.start()
+        await settle(model)
+        let loan = try #require(model.attention.first)
+        try await model.markReturned(loan)
+        #expect(model.attention.isEmpty)
+        #expect(StubServer.seen.contains { $0.method == "POST" && $0.path == "/api/v1/loans/l1/returned" })
+    }
+
+    @Test func boughtRaisesTheCountAndCanBeUndone() async throws {
+        StubServer.routes["GET /api/v1/shopping"] = (200, #"{"items":[{"id":"f","name":"Furnace filter","place":"Garage","quantity":0,"minQuantity":2,"buy":3,"forTask":null,"photoId":null}],"text":"Furnace filter ×3"}"#)
+        StubServer.routes["POST /api/v1/items/f/stock"] = (200, #"{"quantity":3,"applied":3,"movementId":"m1"}"#)
+        StubServer.routes["POST /api/v1/stock/movements/m1/undo"] = (200, #"{"itemId":"f","quantity":0,"applied":-3,"movementId":"m2"}"#)
+        let (model, _, _) = model()
+        model.start()
+        await settle(model)
+        await model.loadShopping()
+        #expect(model.showsShopping)
+        let filter = try #require(model.shopping?.items.first)
+        try await model.bought(filter, count: filter.buy)
+        let sent = try #require(StubServer.seen.first { $0.path == "/api/v1/items/f/stock" })
+        #expect((try JSONSerialization.jsonObject(with: sent.body ?? Data()) as? [String: Any])?["delta"] as? Int == 3)
+        #expect(model.lastBought == AppModel.Bought(name: "Furnace filter", count: 3, movementId: "m1"))
+        await model.undoBought()
+        #expect(model.lastBought == nil)
+        #expect(StubServer.seen.contains { $0.path == "/api/v1/stock/movements/m1/undo" })
+    }
+
+    @Test func noShoppingTabWithNothingToBuy() async {
+        let (model, _, _) = model()
+        model.start()
+        await settle(model)
+        #expect(!model.showsShopping)
+    }
+
     @Test func signingOutForgetsAndRevokes() async throws {
         let (model, store, _) = model()
         model.start()
@@ -276,6 +331,24 @@ final class MemoryStore: SessionKeeping, @unchecked Sendable {
         }
         let revoke = try #require(StubServer.seen.first { $0.path == "/api/auth/oauth2/revoke" })
         #expect(String(decoding: revoke.body ?? Data(), as: UTF8.self).contains("token=ferret_rt_test"))
+    }
+}
+
+@Suite struct NotificationClickTests {
+    @Test func severalOpenTheBellOneOpensItsPlace() {
+        #expect(Notifier.target(of: ["bell": true]) == .bell)
+        #expect(Notifier.target(of: ["url": "http://ferret.test/#/items/i1"]) == .web(URL(string: "http://ferret.test/#/items/i1")!))
+        #expect(Notifier.target(of: [:]) == nil)
+    }
+}
+
+@Suite struct DoneFormTests {
+    @Test func readsTypedNumbersAndDays() {
+        #expect(DoneForm.parse("41,250 mi") == 41250)
+        #expect(DoneForm.parse("12.5") == 12.5)
+        #expect(DoneForm.parse("none") == nil)
+        let day = Calendar.current.date(from: DateComponents(year: 2026, month: 3, day: 7))!
+        #expect(DoneForm.isoDay(day) == "2026-03-07")
     }
 }
 

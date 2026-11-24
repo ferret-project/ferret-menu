@@ -6,13 +6,16 @@ doing, ask about your things, and add new ones by dropping their photos and rece
 - **Search** with ⌃⌥⌘F from any app (change it in Settings): by name, brand, what it's for, or what's in its photos
   and documents. ↑ ↓ and Return open a thing in Ferret; right-click copies where it is or a link to it.
 - **The bell**: warranties ending, maintenance due, recalls and the rest of Ferret's bell. The paw shows how many are
-  urgent, and macOS tells you when something new becomes urgent.
+  urgent, and macOS tells you when something new becomes urgent. Mark maintenance done (when, a note, what it cost,
+  the counter's reading) or a loan returned right there.
+- **Shopping list**: what's run out or running low. **Bought** adds to its count (with Undo); **Copy List** for the
+  shop.
 - **Ask Ferret**: "how often should I descale the kettle?" answered from your things and their manuals, with where
   the answer came from (when your Ferret has an AI model).
 - **Add**: a name and a place, plus any photos, receipts or manuals: drop files on the paw, on the Add screen, or on
   a thing in the search results to add them to it. Everything else is filled in in Ferret.
 
-Things open in your browser, in Ferret itself, where your own sign-in is.
+Things open in your browser, in Ferret itself, where your own sign-in is. ⌘1, ⌘2… switch between the screens.
 
 ## Signing in
 

@@ -14,7 +14,7 @@ extension SessionStore: SessionKeeping {}
 
 /// The menu bar window's screens.
 enum Screen: Hashable {
-    case search, bell, ask, add
+    case search, bell, shopping, ask, add
 }
 
 /// Everything the menu bar app knows: the sign-in, the household at a glance, the bell, and what's being added.
@@ -44,6 +44,10 @@ final class AppModel {
     private(set) var attention: [AttentionItem] = []
     private(set) var recent: [Item] = []
     private(set) var places: PlaceTree?
+    /// The shopping list (loaded when its screen opens).
+    private(set) var shopping: ShoppingList?
+    /// The last "Bought": what, how many, and the change to undo.
+    private(set) var lastBought: Bought?
     private(set) var loading = false
     /// The last refresh couldn't reach the server (what's shown is from before).
     private(set) var unreachable = false
@@ -55,6 +59,8 @@ final class AppModel {
     var query = ""
     /// Files waiting to be added (dropped on the menu bar icon or the Add screen).
     var staged: [PickedFile] = []
+    /// The bell row whose Done or Returned form is open (its `key`; one at a time).
+    var dealing: String?
     /// Bumped to put the cursor in the search box (each time the window opens).
     private(set) var focusRequest = 0
     /// While true the window stays open when another window takes focus (the sign-in browser, a file panel).
@@ -97,6 +103,14 @@ final class AppModel {
 
     var canAsk: Bool { me?.features?.textAi == true }
     var urgentCount: Int { attention.count(where: \.isUrgent) }
+    /// The shopping list's tab shows while there's something to buy (and while it's open).
+    var showsShopping: Bool { (summary?.toBuy ?? 0) > 0 || shopping?.items.isEmpty == false || screen == .shopping }
+
+    struct Bought: Equatable {
+        let name: String
+        let count: Int
+        let movementId: String
+    }
 
     /// Picks up a kept sign-in, then keeps the bell fresh.
     func start() {
@@ -159,6 +173,9 @@ final class AppModel {
         attention = []
         recent = []
         places = nil
+        shopping = nil
+        lastBought = nil
+        dealing = nil
         staged = []
         thumbs = [:]
         unreachable = false
@@ -260,6 +277,69 @@ final class AppModel {
     func stage(_ files: [PickedFile]) {
         staged.append(contentsOf: files.filter { !staged.contains($0) })
     }
+
+    // MARK: - Dealing with the bell
+
+    /// A task's details for marking it done (whether it's due by use, and the last reading).
+    func task(_ id: String) async throws -> MaintenanceTask {
+        guard let client else { throw FerretError.signedOut }
+        return try await client.maintenanceTask(id)
+    }
+
+    /// Marks a bell item's maintenance task done; it leaves the bell at once, then the bell is read again.
+    func markDone(_ item: AttentionItem, _ done: MaintenanceDone) async throws {
+        guard let client else { throw FerretError.signedOut }
+        try await client.markDone(item.id, done)
+        dealtWith(item)
+    }
+
+    /// Marks a bell item's loan returned (lent and back, or borrowed and given back).
+    func markReturned(_ item: AttentionItem) async throws {
+        guard let client else { throw FerretError.signedOut }
+        try await client.markReturned(item.id)
+        dealtWith(item)
+    }
+
+    private func dealtWith(_ item: AttentionItem) {
+        attention.removeAll { $0.key == item.key }
+        Task { await refreshSoon() }
+    }
+
+    /// A refresh after a change, waiting for one already under way (which may have read the bell before it).
+    private func refreshSoon() async {
+        while loading { try? await Task.sleep(for: .milliseconds(50)) }
+        await refresh()
+    }
+
+    // MARK: - Shopping
+
+    func loadShopping() async {
+        guard let client else { return }
+        do { shopping = try await client.shopping() } catch { show(error) }
+    }
+
+    /// Bought some: the thing's count goes up by that many (and it leaves the list once there are enough).
+    func bought(_ entry: ShoppingList.Entry, count: Int) async throws {
+        guard let client, count > 0 else { return }
+        let change = try await client.adjustStock(entry.id, by: count)
+        lastBought = change.movementId.map { Bought(name: entry.name, count: count, movementId: $0) }
+        await loadShopping()
+        Task { await refreshSoon() }
+    }
+
+    func undoBought() async {
+        guard let client, let last = lastBought else { return }
+        lastBought = nil
+        do {
+            _ = try await client.undoStock(last.movementId)
+        } catch {
+            show(error)
+        }
+        await loadShopping()
+        Task { await refreshSoon() }
+    }
+
+    func forgetBought() { lastBought = nil }
 
     // MARK: - Opening Ferret
 

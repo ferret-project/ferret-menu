@@ -27,6 +27,21 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
 
     private var center: UNUserNotificationCenter { .current() }
 
+    /// Opens Ferret Menu's own bell list (set by the app delegate).
+    var openBell: () -> Void = {}
+
+    /// What clicking a notification does: several at once open the bell list here; one opens its own place in Ferret.
+    enum Target: Equatable {
+        case bell
+        case web(URL)
+    }
+
+    nonisolated static func target(of userInfo: [AnyHashable: Any]) -> Target? {
+        if userInfo["bell"] as? Bool == true { return .bell }
+        guard let address = userInfo["url"] as? String, let url = URL(string: address) else { return nil }
+        return .web(url)
+    }
+
     func activate() {
         center.delegate = self
     }
@@ -52,7 +67,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
             let content = UNMutableNotificationContent()
             content.title = String(localized: "\(items.count) things need doing")
             content.body = items.prefix(Self.most).map(\.title).joined(separator: ", ") + "…"
-            content.userInfo = ["url": webURL(server: server, route: "#/").absoluteString, "bell": true]
+            content.userInfo = ["bell": true]
             content.sound = .default
             center.add(UNNotificationRequest(identifier: "ferret-bell-many", content: content, trigger: nil))
             return
@@ -68,8 +83,11 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     }
 
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
-        guard let address = response.notification.request.content.userInfo["url"] as? String, let url = URL(string: address) else { return }
-        await MainActor.run { _ = NSWorkspace.shared.open(url) }
+        switch Self.target(of: response.notification.request.content.userInfo) {
+        case .bell: await MainActor.run { openBell() }
+        case .web(let url): await MainActor.run { _ = NSWorkspace.shared.open(url) }
+        case nil: break
+        }
     }
 
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {

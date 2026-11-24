@@ -41,6 +41,7 @@ struct MainView: View {
                 switch model.screen {
                 case .search: SearchScreen()
                 case .bell: BellScreen()
+                case .shopping: ShoppingScreen()
                 case .ask: AskScreen()
                 case .add: AddScreen()
                 }
@@ -58,10 +59,9 @@ private struct TabBar: View {
 
     var body: some View {
         HStack(spacing: 2) {
-            tab(.search, "magnifyingglass", "Search")
-            tab(.bell, "bell", "Needs attention", count: model.urgentCount)
-            if model.canAsk { tab(.ask, "sparkles", "Ask Ferret") }
-            if model.canEdit { tab(.add, "plus", "Add a thing") }
+            ForEach(Array(tabs.enumerated()), id: \.element.screen) { index, tab in
+                self.tab(tab.screen, tab.symbol, tab.label, count: tab.screen == .bell ? model.urgentCount : 0, number: index + 1)
+            }
             Spacer()
             Menu {
                 Button("Open Ferret") { model.open("#/") }
@@ -86,7 +86,16 @@ private struct TabBar: View {
         .padding(.vertical, 6)
     }
 
-    private func tab(_ screen: Screen, _ symbol: String, _ label: LocalizedStringKey, count: Int = 0) -> some View {
+    /// The screens shown now, in order: ⌘1, ⌘2… follow it.
+    private var tabs: [(screen: Screen, symbol: String, label: LocalizedStringKey)] {
+        var list: [(screen: Screen, symbol: String, label: LocalizedStringKey)] = [(.search, "magnifyingglass", "Search"), (.bell, "bell", "Needs attention")]
+        if model.showsShopping { list.append((.shopping, "cart", "Shopping list")) }
+        if model.canAsk { list.append((.ask, "sparkles", "Ask Ferret")) }
+        if model.canEdit { list.append((.add, "plus", "Add a thing")) }
+        return list
+    }
+
+    private func tab(_ screen: Screen, _ symbol: String, _ label: LocalizedStringKey, count: Int, number: Int) -> some View {
         let current = model.screen == screen
         return Button {
             model.screen = screen
@@ -103,7 +112,8 @@ private struct TabBar: View {
             .background(RoundedRectangle(cornerRadius: 6).fill(current ? Color.primary.opacity(0.1) : .clear))
         }
         .buttonStyle(.plain)
-        .help(Text(label))
+        .keyboardShortcut(KeyEquivalent(Character(String(number))), modifiers: .command)
+        .help(Text("\(Text(label)) (⌘\(number))"))
         .accessibilityLabel(Text(label))
         .accessibilityValue(count > 0 ? Text("\(count) urgent") : Text(""))
         .accessibilityAddTraits(current ? .isSelected : [])

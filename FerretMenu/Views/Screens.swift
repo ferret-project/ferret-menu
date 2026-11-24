@@ -130,19 +130,149 @@ struct BellScreen: View {
         if model.attention.isEmpty {
             EmptyNote(symbol: "checkmark.circle", text: "Nothing needs doing right now.")
         } else {
-            FittedScroll {
-                VStack(alignment: .leading, spacing: 0) {
-                    if !urgent.isEmpty {
-                        SectionHeading("Urgent")
-                        ForEach(urgent, id: \.key) { BellRow(item: $0) }
+            ScrollViewReader { scroller in
+                FittedScroll {
+                    VStack(alignment: .leading, spacing: 0) {
+                        if !urgent.isEmpty {
+                            SectionHeading("Urgent")
+                            ForEach(urgent, id: \.key) { BellRow(item: $0).id($0.key) }
+                        }
+                        if !soon.isEmpty {
+                            SectionHeading("Coming up")
+                            ForEach(soon, id: \.key) { BellRow(item: $0).id($0.key) }
+                        }
                     }
-                    if !soon.isEmpty {
-                        SectionHeading("Coming up")
-                        ForEach(soon, id: \.key) { BellRow(item: $0) }
-                    }
+                    .padding(6)
                 }
-                .padding(6)
+                // The form that opened is shown whole.
+                .onChange(of: model.dealing) { _, key in
+                    guard let key else { return }
+                    Task { @MainActor in withAnimation { scroller.scrollTo(key, anchor: .center) } }
+                }
+                .onAppear { if let key = model.dealing { scroller.scrollTo(key, anchor: .center) } }
             }
+        }
+    }
+}
+
+// MARK: - Shopping list
+
+/// What's run out or running low: tick off what was bought (its count goes up), copy the list.
+struct ShoppingScreen: View {
+    @Environment(AppModel.self) private var model
+    @State private var copied = false
+
+    var body: some View {
+        VStack(spacing: 0) {
+            if let last = model.lastBought {
+                HStack(spacing: 8) {
+                    Image(systemName: "checkmark.circle").foregroundStyle(.green)
+                    Text("Added \(last.count) to “\(last.name)”.").font(.callout).lineLimit(2)
+                    Spacer(minLength: 0)
+                    Button("Undo") { Task { await model.undoBought() } }.controlSize(.small)
+                    Button { model.forgetBought() } label: { Image(systemName: "xmark") }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.secondary)
+                        .help(Text("Dismiss"))
+                        .accessibilityLabel(Text("Dismiss"))
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .background(Color.green.opacity(0.1))
+            }
+            if let list = model.shopping {
+                if list.items.isEmpty {
+                    EmptyNote(symbol: "cart", text: "Nothing to buy. Things you keep track of show up here when they run out or get low.")
+                } else {
+                    FittedScroll {
+                        VStack(alignment: .leading, spacing: 0) {
+                            ForEach(list.items) { ShoppingRow(entry: $0) }
+                        }
+                        .padding(6)
+                    }
+                    Divider()
+                    HStack {
+                        Button(copied ? "Copied" : "Copy List") {
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(list.text, forType: .string)
+                            copied = true
+                        }
+                        Spacer()
+                        Button("Open in Ferret") { model.open("#/shopping") }
+                    }
+                    .controlSize(.small)
+                    .padding(8)
+                }
+            } else {
+                ProgressView().controlSize(.small).frame(maxWidth: .infinity).padding(.vertical, 36)
+            }
+        }
+        .task { await model.loadShopping() }
+    }
+}
+
+private struct ShoppingRow: View {
+    @Environment(AppModel.self) private var model
+    let entry: ShoppingList.Entry
+    @State private var hovering = false
+    @State private var saving = false
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Button { model.open(itemRoute(entry.id)) } label: {
+                HStack(spacing: 10) {
+                    Thumbnail(photoId: entry.photoId)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(entry.name).lineLimit(1).help(entry.name)
+                        Text(left).font(.caption).foregroundStyle(entry.quantity == 0 ? Color.red : Color.orange).lineLimit(1)
+                        if let forTask = entry.forTask {
+                            Text("For \(forTask)").font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                        } else if let place = entry.place {
+                            Text(place).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                        }
+                    }
+                    Spacer(minLength: 0)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityElement(children: .combine)
+            .accessibilityHint(Text("Opens it in Ferret"))
+            if model.canEdit {
+                Button {
+                    buy(entry.buy)
+                } label: {
+                    if saving { ProgressView().controlSize(.small) } else { Text("Bought \(entry.buy)") }
+                }
+                .controlSize(.small)
+                .disabled(saving)
+                .help(Text("Adds \(entry.buy) to its count"))
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(RoundedRectangle(cornerRadius: 8).fill(hovering ? Color.primary.opacity(0.08) : .clear))
+        .onHover { hovering = $0 }
+        .contextMenu {
+            Button("Open in Ferret") { model.open(itemRoute(entry.id)) }
+            if model.canEdit {
+                if entry.buy != 1 { Button("Bought 1") { buy(1) } }
+                Button("Bought \(entry.buy)") { buy(entry.buy) }
+            }
+        }
+    }
+
+    private var left: String {
+        let count = entry.quantity == 0 ? String(localized: "None left") : String(localized: "\(entry.quantity) left")
+        guard let least = entry.minQuantity, least > 0 else { return count }
+        return count + " · " + String(localized: "keep at least \(least)")
+    }
+
+    private func buy(_ count: Int) {
+        saving = true
+        Task {
+            defer { saving = false }
+            do { try await model.bought(entry, count: count) } catch { model.show(error) }
         }
     }
 }
@@ -150,6 +280,8 @@ struct BellScreen: View {
 // MARK: - Ask Ferret
 
 struct AskScreen: View {
+    /// The longest question Ferret takes.
+    static let longest = 500
     @Environment(AppModel.self) private var model
     @State private var question = ""
     @State private var asked = ""
@@ -166,24 +298,33 @@ struct AskScreen: View {
                     .lineLimit(1 ... 4)
                     .focused($focused)
                     .onSubmit(ask)
+                    .onChange(of: question) { _, text in
+                        if text.count > Self.longest { question = String(text.prefix(Self.longest)) }
+                    }
                 Button("Ask", action: ask)
                     .keyboardShortcut(.defaultAction)
                     .disabled(question.trimmingCharacters(in: .whitespaces).count < 3 || asking)
+            }
+            if question.count > Self.longest - 100 {
+                Text("\(Self.longest - question.count) characters left")
+                    .font(.caption)
+                    .foregroundStyle(question.count >= Self.longest ? .orange : .secondary)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
             }
             FittedScroll {
                 VStack(alignment: .leading, spacing: 12) {
                     if asking {
                         HStack { ProgressView().controlSize(.small); Text("Looking through your things…").foregroundStyle(.secondary) }
                     } else if let failure {
-                        Text(failure).foregroundStyle(.secondary).textSelection(.enabled)
+                        Text(failure).foregroundStyle(.secondary).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
                     } else if let answer {
                         Text(asked).font(.headline)
                         Text(Self.markdown(answer.answer)).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
                         if !answer.citations.isEmpty {
                             SectionHeading("From").padding(.horizontal, -8)
                             ForEach(answer.citations, id: \.self) { citation in
-                                if let itemId = citation.itemId {
-                                    Button { model.open(itemRoute(itemId)) } label: {
+                                if let route = citation.route {
+                                    Button { model.open(route) } label: {
                                         Label(citation.label, systemImage: citation.attachmentId == nil ? "shippingbox" : "doc.text")
                                             .multilineTextAlignment(.leading)
                                     }
@@ -207,7 +348,7 @@ struct AskScreen: View {
 
     private func ask() {
         let text = question.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard text.count >= 3, !asking else { return }
+        guard text.count >= 3, text.count <= Self.longest, !asking else { return }
         asking = true
         failure = nil
         asked = text

@@ -26,8 +26,33 @@ enum DebugHooks {
         log.notice("debug command \(command, privacy: .public)")
         switch command {
         case "show":
-            let screens: [String: Screen] = ["search": .search, "bell": .bell, "ask": .ask, "add": .add]
+            let screens: [String: Screen] = ["search": .search, "bell": .bell, "shopping": .shopping, "ask": .ask, "add": .add]
             menuBar.show(on: screens[argument])
+        case "deal":
+            // deal:<kind>:<id> opens that bell row's Done or Returned.
+            menuBar.show(on: .bell)
+            model.dealing = argument
+        case "done", "returned":
+            // done:<kind>:<id> / returned:<kind>:<id> as if its form were sent (done with a note).
+            guard let item = model.attention.first(where: { $0.key == argument }) else { log.error("no bell item \(argument, privacy: .public)"); return }
+            do {
+                if command == "done" { try await model.markDone(item, MaintenanceDone(note: "From Ferret Menu")) } else { try await model.markReturned(item) }
+                log.notice("\(command, privacy: .public) ok \(argument, privacy: .public)")
+            } catch {
+                log.error("\(command, privacy: .public) failed \(AppModel.describe(error), privacy: .public)")
+            }
+        case "bought":
+            await model.loadShopping()
+            guard let entry = model.shopping?.items.first(where: { $0.id == argument }) else { log.error("not on the list \(argument, privacy: .public)"); return }
+            do {
+                try await model.bought(entry, count: entry.buy)
+                log.notice("bought ok \(entry.name, privacy: .public) ×\(entry.buy) movement=\(model.lastBought?.movementId ?? "-", privacy: .public)")
+            } catch {
+                log.error("bought failed \(AppModel.describe(error), privacy: .public)")
+            }
+        case "undo-bought":
+            await model.undoBought()
+            log.notice("undo-bought done, list=\(model.shopping?.items.map(\.name) ?? [], privacy: .public)")
         case "close":
             model.closeWindow()
         case "query":
@@ -119,6 +144,7 @@ enum DebugHooks {
                 "canAsk": model.canAsk,
                 "screen": "\(model.screen)",
                 "staged": model.staged.map(\.name),
+                "shopping": model.shopping?.items.map(\.name) ?? [],
                 "message": model.message ?? "",
                 "unreachable": model.unreachable,
                 "badge": menuBar.badgeTitle,
