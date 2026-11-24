@@ -2,7 +2,7 @@ import AuthenticationServices
 import FerretKit
 import SwiftUI
 
-/// "Sign in to Ferret": the server's address, then Ferret's own sign-in page in a browser window, where the person
+/// "Sign in to Ferret": the hosted Ferret unless a self-hosted address is set, then Ferret's own sign-in page in a browser window, where the person
 /// picks the household and whether the app may change things. The only way in: the app never sees the password and
 /// takes no API keys, so each Mac is its own connected app that can be disconnected in Ferret.
 struct SignInView: View {
@@ -11,7 +11,8 @@ struct SignInView: View {
     @State private var address = ""
     @State private var working = false
     @State private var error: String?
-    @State private var advanced = false
+    @State private var selfHosted = false
+    @State private var cloudflare = false
     @State private var accessId = ""
     @State private var accessSecret = ""
 
@@ -22,25 +23,16 @@ struct SignInView: View {
             Text("Sign in to Ferret").font(.title2.weight(.semibold))
             Text("Find anything you own from the menu bar.").foregroundStyle(.secondary)
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Server").font(.caption).foregroundStyle(.secondary)
-                TextField(ServerAddress.hosted.host() ?? "", text: $address, prompt: Text(verbatim: "ferret.example.com"))
-                    .textFieldStyle(.roundedBorder)
-                    .onSubmit(signIn)
-                Text("Your own Ferret's address, or leave it empty for the hosted Ferret.").font(.caption).foregroundStyle(.secondary)
-            }
-
-            DisclosureGroup("Cloudflare Access", isExpanded: $advanced) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("A service token, if your server sits behind Cloudflare Access").font(.caption).foregroundStyle(.secondary)
-                    TextField(text: $accessId, prompt: Text("Client ID")) { Text("Client ID") }
-                        .textFieldStyle(.roundedBorder)
-                    SecureField(text: $accessSecret, prompt: Text("Client secret")) { Text("Client secret") }
-                        .textFieldStyle(.roundedBorder)
+            VStack(spacing: 6) {
+                Button(action: signIn) {
+                    if working { ProgressView().controlSize(.small).frame(maxWidth: .infinity) } else { Text("Sign In").frame(maxWidth: .infinity) }
                 }
-                .padding(.top, 6)
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .keyboardShortcut(.defaultAction)
+                .disabled(working)
+                Text("Signs in to \(destination)").font(.caption).foregroundStyle(.secondary)
             }
-            .font(.callout)
 
             if let error {
                 Text(error).font(.callout).foregroundStyle(.red).multilineTextAlignment(.center).textSelection(.enabled)
@@ -48,13 +40,33 @@ struct SignInView: View {
                 Text(message).font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
             }
 
-            Button(action: signIn) {
-                if working { ProgressView().controlSize(.small).frame(maxWidth: .infinity) } else { Text("Sign In").frame(maxWidth: .infinity) }
+            VStack(alignment: .leading, spacing: 8) {
+                DisclosureGroup("Self-hosted server", isExpanded: $selfHosted) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        TextField(text: $address, prompt: Text(verbatim: "ferret.example.com")) { Text("Server address") }
+                            .textFieldStyle(.roundedBorder)
+                            .onSubmit(signIn)
+                        Text("Your own Ferret's address, such as ferret.example.com or 192.168.1.20:8787. Leave it empty for the hosted Ferret.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(.top, 6)
+                }
+
+                DisclosureGroup("Cloudflare Access", isExpanded: $cloudflare) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("A service token, if your server sits behind Cloudflare Access").font(.caption).foregroundStyle(.secondary)
+                        TextField(text: $accessId, prompt: Text("Client ID")) { Text("Client ID") }
+                            .textFieldStyle(.roundedBorder)
+                        SecureField(text: $accessSecret, prompt: Text("Client secret")) { Text("Client secret") }
+                            .textFieldStyle(.roundedBorder)
+                    }
+                    .padding(.top, 6)
+                }
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-            .keyboardShortcut(.defaultAction)
-            .disabled(working)
+            .font(.callout)
+
             Spacer(minLength: 0)
             HStack {
                 Spacer()
@@ -64,11 +76,21 @@ struct SignInView: View {
         .padding(20)
         .onAppear {
             address = model.lastServer
+            selfHosted = !address.isEmpty
             if let server = ServerAddress.parse(address), let kept = AccessTokenStore(service: AppModel.keychainService).load(for: server) {
                 accessId = kept.clientId
                 accessSecret = kept.clientSecret
+                cloudflare = true
             }
         }
+    }
+
+    /// The server Sign In goes to: the hosted Ferret unless a self-hosted address is typed.
+    private var destination: String {
+        let typed = address.trimmingCharacters(in: .whitespacesAndNewlines)
+        if typed.isEmpty { return ServerAddress.hosted.host() ?? ServerAddress.hosted.absoluteString }
+        guard let url = ServerAddress.parse(typed), let host = url.host() else { return typed }
+        return url.port.map { "\(host):\($0)" } ?? host
     }
 
     private func signIn() {
@@ -99,7 +121,8 @@ struct SignInView: View {
                 // Closed the sign-in window or pressed Cancel: nothing to say.
             } catch let failure as FerretError {
                 error = failure.localizedDescription
-                if failure == .accessBlocked { advanced = true }
+                if failure == .accessBlocked { cloudflare = true }
+                if failure == .notFerret || failure == .offline { selfHosted = true }
             } catch {
                 self.error = AppModel.describe(error)
             }
