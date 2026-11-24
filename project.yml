@@ -28,8 +28,8 @@ packages:
     url: https://github.com/sparkle-project/Sparkle
     from: 2.10.1
   FerretKit:
-    # Until ferret-kit is on GitHub: a checkout beside this one.
-    path: ../ferret-kit
+    url: https://github.com/ferret-project/ferret-kit
+    from: 0.1.0
 targets:
   FerretMenu:
     type: application
