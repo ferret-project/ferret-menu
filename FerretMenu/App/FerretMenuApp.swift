@@ -31,6 +31,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         HotKey.shared.action = { [weak menuBar] in menuBar?.toggle() }
         HotKey.shared.register(Preferences.shortcut)
         model.start()
+        #if DEBUG
+        DebugHooks.install(model: model, menuBar: menuBar)
+        #endif
         // The Mac woke up or came back online: the bell may have news.
         NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in await self?.model.refresh() }

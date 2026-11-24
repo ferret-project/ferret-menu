@@ -7,6 +7,7 @@ import SwiftUI
 enum SettingsOpener {
     private static var window: NSWindow?
     static var model: AppModel?
+    static var view: NSView? { window?.contentView }
 
     static func open() {
         guard let model else { return }

@@ -164,8 +164,13 @@ final class MemoryStore: SessionKeeping, @unchecked Sendable {
         StubServer.seen = []
     }
 
-    private func model(_ credential: Credential = .apiKey("ferret_test")) -> (AppModel, MemoryStore, UserDefaults) {
-        let store = MemoryStore(Session(server: server, credential: credential))
+    /// An app sign-in, good for an hour (no refresh unless the server turns the token away).
+    private var tokens: OAuthTokens {
+        OAuthTokens(accessToken: "ferret_at_test", refreshToken: "ferret_rt_test", expiresAt: Date().addingTimeInterval(3600), clientId: "c", tokenEndpoint: URL(string: "http://ferret.test/api/auth/oauth2/token")!, resource: "http://ferret.test/mcp")
+    }
+
+    private func model() -> (AppModel, MemoryStore, UserDefaults) {
+        let store = MemoryStore(Session(server: server, credential: .oauth(tokens)))
         let defaults = UserDefaults(suiteName: "tests-\(UUID().uuidString)")!
         defaults.set(false, forKey: "notifications")
         return (AppModel(store: store, defaults: defaults, urlSession: StubServer.session()), store, defaults)
@@ -201,7 +206,9 @@ final class MemoryStore: SessionKeeping, @unchecked Sendable {
         #expect(!model.canAsk)
     }
 
-    @Test func aDeletedKeySignsOut() async {
+    @Test func aDisconnectedAppSignsOut() async {
+        // Disconnected in Ferret's Settings: the token is turned away and so is the refresh.
+        StubServer.routes["POST /api/auth/oauth2/token"] = (400, #"{"error":"invalid_grant"}"#)
         StubServer.routes["GET /api/v1/me"] = (401, #"{"error":{"code":"unauthorized","message":"Sign in first"}}"#)
         StubServer.routes["GET /api/v1/summary"] = (401, #"{"error":{"code":"unauthorized","message":"Sign in first"}}"#)
         StubServer.routes["GET /api/v1/attention"] = (401, #"{"error":{"code":"unauthorized","message":"Sign in first"}}"#)
@@ -211,6 +218,7 @@ final class MemoryStore: SessionKeeping, @unchecked Sendable {
         #expect(!model.signedIn)
         #expect(store.session == nil)
         #expect(model.message == FerretError.signedOut.localizedDescription)
+        #expect(StubServer.seen.contains { $0.path == "/api/auth/oauth2/token" })
     }
 
     @Test func addsAThingWithItsFiles() async throws {
@@ -247,13 +255,21 @@ final class MemoryStore: SessionKeeping, @unchecked Sendable {
         #expect(failed[0].contains("Ferret can't keep that kind of file"))
     }
 
-    @Test func signingOutForgets() async {
+    @Test func signingOutForgetsAndRevokes() async throws {
         let (model, store, _) = model()
         model.start()
         await settle(model)
+        StubServer.routes["GET /.well-known/oauth-authorization-server"] = (200, #"{"revocation_endpoint":"http://ferret.test/api/auth/oauth2/revoke"}"#)
+        StubServer.routes["POST /api/auth/oauth2/revoke"] = (200, "{}")
         model.signOut()
         #expect(!model.signedIn)
         #expect(store.session == nil)
         #expect(model.attention.isEmpty)
+        // The server forgets the refresh token too.
+        for _ in 0 ..< 100 where !StubServer.seen.contains(where: { $0.path == "/api/auth/oauth2/revoke" }) {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        let revoke = try #require(StubServer.seen.first { $0.path == "/api/auth/oauth2/revoke" })
+        #expect(String(decoding: revoke.body ?? Data(), as: UTF8.self).contains("token=ferret_rt_test"))
     }
 }

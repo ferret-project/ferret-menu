@@ -73,6 +73,10 @@ final class MenuBarController: NSObject, NSPopoverDelegate, NSMenuDelegate {
     /// Dragging the window away from the menu bar keeps it open as a window of its own (handy for dropping files).
     func popoverShouldDetach(_ popover: NSPopover) -> Bool { true }
 
+    /// What the window shows (for debug snapshots).
+    var windowView: NSView? { popover.contentViewController?.view }
+    var badgeTitle: String { item.button?.title ?? "" }
+
     // MARK: - Badge
 
     private func watchBadge() {

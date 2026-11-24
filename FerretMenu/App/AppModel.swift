@@ -42,6 +42,8 @@ final class AppModel {
     var message: String?
 
     var screen: Screen = .search
+    /// What's typed in the search box (kept while the window is closed, like Spotlight).
+    var query = ""
     /// Files waiting to be added (dropped on the menu bar icon or the Add screen).
     var staged: [PickedFile] = []
     /// Bumped to put the cursor in the search box (each time the window opens).
@@ -143,6 +145,7 @@ final class AppModel {
         thumbs = [:]
         unreachable = false
         screen = .search
+        query = ""
     }
 
     // MARK: - Keeping up to date

@@ -3,7 +3,8 @@ import FerretKit
 import SwiftUI
 
 /// "Sign in to Ferret": the server's address, then Ferret's own sign-in page in a browser window, where the person
-/// picks the household and whether the app may change things. The app never sees the password.
+/// picks the household and whether the app may change things. The only way in: the app never sees the password and
+/// takes no API keys, so each Mac is its own connected app that can be disconnected in Ferret.
 struct SignInView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.webAuthenticationSession) private var webAuthenticationSession
@@ -11,7 +12,6 @@ struct SignInView: View {
     @State private var working = false
     @State private var error: String?
     @State private var advanced = false
-    @State private var apiKey = ""
     @State private var accessId = ""
     @State private var accessSecret = ""
 
@@ -30,13 +30,9 @@ struct SignInView: View {
                 Text("Your own Ferret's address, or leave it empty for the hosted Ferret.").font(.caption).foregroundStyle(.secondary)
             }
 
-            DisclosureGroup("More options", isExpanded: $advanced) {
+            DisclosureGroup("Cloudflare Access", isExpanded: $advanced) {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("API key (instead of signing in)").font(.caption).foregroundStyle(.secondary)
-                    SecureField(text: $apiKey, prompt: Text(verbatim: "ferret_…")) { Text("API key") }
-                        .textFieldStyle(.roundedBorder)
-                    Text("Cloudflare Access service token, if your server sits behind Access").font(.caption).foregroundStyle(.secondary)
-                        .padding(.top, 4)
+                    Text("A service token, if your server sits behind Cloudflare Access").font(.caption).foregroundStyle(.secondary)
                     TextField(text: $accessId, prompt: Text("Client ID")) { Text("Client ID") }
                         .textFieldStyle(.roundedBorder)
                     SecureField(text: $accessSecret, prompt: Text("Client secret")) { Text("Client secret") }
@@ -93,19 +89,10 @@ struct SignInView: View {
                 model.holdOpen = false
             }
             do {
-                let credential: Credential
-                let key = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !key.isEmpty {
-                    credential = .apiKey(key)
-                } else {
-                    credential = .oauth(try await authorize(server, clientId: model.clientId(for: server), access: accessToken))
-                }
-                let session = Session(server: server, credential: credential, access: accessToken)
-                // Check it works before keeping it (a wrong key, or an address that isn't Ferret).
-                _ = try await FerretClient(session: session).me()
+                let tokens = try await authorize(server, clientId: model.clientId(for: server), access: accessToken)
+                let session = Session(server: server, credential: .oauth(tokens), access: accessToken)
                 AccessTokenStore(service: AppModel.keychainService).save(accessToken, for: server)
                 model.lastServer = typed
-                apiKey = ""
                 model.signedIn(session)
                 model.showWindow()
             } catch FerretError.cancelled {

@@ -7,7 +7,6 @@ import UniformTypeIdentifiers
 /// Search box on top; with nothing typed, what needs doing and what was opened last.
 struct SearchScreen: View {
     @Environment(AppModel.self) private var model
-    @State private var query = ""
     @State private var results: [Item] = []
     @State private var searching = false
     @State private var searched = ""
@@ -15,10 +14,11 @@ struct SearchScreen: View {
     @FocusState private var focused: Bool
 
     var body: some View {
+        @Bindable var model = model
         VStack(spacing: 0) {
             HStack(spacing: 6) {
                 Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                TextField("Find anything you own", text: $query)
+                TextField("Find anything you own", text: $model.query)
                     .textFieldStyle(.plain)
                     .font(.title3)
                     .focused($focused)
@@ -27,8 +27,8 @@ struct SearchScreen: View {
                     .onKeyPress(.upArrow) { move(-1) }
                 if searching {
                     ProgressView().controlSize(.small)
-                } else if !query.isEmpty {
-                    Button { query = "" } label: { Image(systemName: "xmark.circle.fill") }
+                } else if !model.query.isEmpty {
+                    Button { model.query = "" } label: { Image(systemName: "xmark.circle.fill") }
                         .buttonStyle(.plain)
                         .foregroundStyle(.secondary)
                         .help(Text("Clear"))
@@ -61,7 +61,7 @@ struct SearchScreen: View {
         .task(id: trimmed) { await search(trimmed) }
     }
 
-    private var trimmed: String { query.trimmingCharacters(in: .whitespacesAndNewlines) }
+    private var trimmed: String { model.query.trimmingCharacters(in: .whitespacesAndNewlines) }
 
     private func search(_ text: String) async {
         guard !text.isEmpty else {
