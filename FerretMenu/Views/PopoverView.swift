@@ -13,7 +13,10 @@ struct PopoverView: View {
                 SignInView()
             }
         }
-        .frame(width: 380, height: 520)
+        // As tall as what it shows (FittedScroll caps the lists); the popover follows the preferred size.
+        .frame(width: 380)
+        .fixedSize(horizontal: false, vertical: true)
+        .animation(.snappy(duration: 0.2), value: model.screen)
     }
 }
 
@@ -42,7 +45,7 @@ struct MainView: View {
                 case .add: AddScreen()
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .frame(maxWidth: .infinity)
             Divider()
             Footer()
         }

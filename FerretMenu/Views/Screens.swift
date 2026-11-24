@@ -38,13 +38,12 @@ struct SearchScreen: View {
             .padding(10)
             Divider()
             ScrollViewReader { scroller in
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 0) {
+                FittedScroll {
+                    VStack(alignment: .leading, spacing: 0) {
                         if trimmed.isEmpty {
                             Glance()
                         } else if results.isEmpty, !searching, searched == trimmed {
                             EmptyNote(symbol: "magnifyingglass", text: "Nothing found for “\(trimmed)”.")
-                                .frame(height: 200)
                         } else {
                             ForEach(Array(results.enumerated()), id: \.element.id) { index, item in
                                 ItemRow(item: item, selected: index == selected).id(index)
@@ -116,7 +115,6 @@ private struct Glance: View {
         }
         if model.attention.isEmpty, model.recent.isEmpty, model.summary != nil {
             EmptyNote(symbol: "pawprint", text: "Search by name, brand, what it's for, or what's in its photos and documents.")
-                .frame(height: 260)
         }
     }
 }
@@ -132,8 +130,8 @@ struct BellScreen: View {
         if model.attention.isEmpty {
             EmptyNote(symbol: "checkmark.circle", text: "Nothing needs doing right now.")
         } else {
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 0) {
+            FittedScroll {
+                VStack(alignment: .leading, spacing: 0) {
                     if !urgent.isEmpty {
                         SectionHeading("Urgent")
                         ForEach(urgent, id: \.key) { BellRow(item: $0) }
@@ -172,7 +170,7 @@ struct AskScreen: View {
                     .keyboardShortcut(.defaultAction)
                     .disabled(question.trimmingCharacters(in: .whitespaces).count < 3 || asking)
             }
-            ScrollView {
+            FittedScroll {
                 VStack(alignment: .leading, spacing: 12) {
                     if asking {
                         HStack { ProgressView().controlSize(.small); Text("Looking through your things…").foregroundStyle(.secondary) }
@@ -251,7 +249,8 @@ struct AddScreen: View {
                     Button("Add Another") { reset() }.keyboardShortcut(.defaultAction)
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 40)
         } else {
             form
         }
@@ -270,7 +269,7 @@ struct AddScreen: View {
             }
             dropZone
             if !model.staged.isEmpty {
-                ScrollView {
+                FittedScroll(tallest: 110) {
                     VStack(alignment: .leading, spacing: 4) {
                         ForEach(model.staged) { file in
                             HStack {
@@ -287,9 +286,7 @@ struct AddScreen: View {
                         }
                     }
                 }
-                .frame(maxHeight: 110)
             }
-            Spacer(minLength: 0)
             HStack {
                 Text("Add more details in Ferret afterwards.").font(.caption).foregroundStyle(.secondary)
                 Spacer()

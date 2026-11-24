@@ -189,8 +189,9 @@ struct EmptyNote: View {
             Image(systemName: symbol).font(.title2).foregroundStyle(.secondary)
             Text(text).foregroundStyle(.secondary).multilineTextAlignment(.center)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding()
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 36)
+        .padding(.horizontal)
     }
 }
 
@@ -268,5 +269,32 @@ enum PlaceFilter {
             let path = entry.place.path.lowercased()
             return words.allSatisfy { path.contains($0) }
         }
+    }
+}
+
+/// A scroll view as tall as what's in it, up to `FittedScroll.tallest`: the window grows and shrinks with its
+/// contents and scrolls only past that.
+struct FittedScroll<Content: View>: View {
+    var shortest: CGFloat = 0
+    /// A lower cap than the screen's, for a short list inside a form.
+    var tallest: CGFloat?
+    @ViewBuilder var content: Content
+    @State private var height: CGFloat = 0
+
+    var body: some View {
+        ScrollView {
+            content.onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
+        }
+        .scrollBounceBehavior(.basedOnSize)
+        .frame(height: min(max(height, shortest), tallest ?? FittedScroll<EmptyView>.tallest))
+    }
+}
+
+extension FittedScroll where Content == EmptyView {
+    /// The most a list may take: the screen's height less the menu bar, the window's bars and some air, and never
+    /// more than 560 (a long bell list scrolls rather than filling a tall screen).
+    @MainActor static var tallest: CGFloat {
+        let screen = NSScreen.main?.visibleFrame.height ?? 800
+        return max(200, min(560, screen - 200))
     }
 }

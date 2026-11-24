@@ -18,7 +18,6 @@ struct SignInView: View {
 
     var body: some View {
         VStack(spacing: 14) {
-            Spacer(minLength: 0)
             Image(nsImage: NSApp.applicationIconImage).resizable().frame(width: 72, height: 72).accessibilityHidden(true)
             Text("Sign in to Ferret").font(.title2.weight(.semibold))
             Text("Find anything you own from the menu bar.").foregroundStyle(.secondary)
@@ -67,13 +66,16 @@ struct SignInView: View {
             }
             .font(.callout)
 
-            Spacer(minLength: 0)
             HStack {
                 Spacer()
                 Button("Quit") { NSApp.terminate(nil) }.buttonStyle(.link).font(.caption)
             }
         }
-        .padding(20)
+        .padding(.horizontal, 20)
+        .padding(.top, 28)
+        .padding(.bottom, 14)
+        .animation(.snappy(duration: 0.2), value: selfHosted)
+        .animation(.snappy(duration: 0.2), value: cloudflare)
         .onAppear {
             address = model.lastServer
             selfHosted = !address.isEmpty
