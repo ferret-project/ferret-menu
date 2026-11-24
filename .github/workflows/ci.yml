@@ -1,0 +1,16 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  test:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - run: brew install xcodegen
+      - run: xcodegen
+      - name: Test
+        run: xcodebuild -project FerretMenu.xcodeproj -scheme FerretMenu -derivedDataPath build test
+      - name: Release build
+        run: xcodebuild -project FerretMenu.xcodeproj -scheme FerretMenu -configuration Release -derivedDataPath build build

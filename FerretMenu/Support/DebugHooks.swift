@@ -111,6 +111,7 @@ enum DebugHooks {
                 "message": model.message ?? "",
                 "unreachable": model.unreachable,
                 "badge": menuBar.badgeTitle,
+                "iconVisible": menuBar.iconShown,
             ]
             let json = (try? JSONSerialization.data(withJSONObject: state, options: [.sortedKeys])).map { String(decoding: $0, as: UTF8.self) } ?? "{}"
             log.notice("state \(json, privacy: .public)")

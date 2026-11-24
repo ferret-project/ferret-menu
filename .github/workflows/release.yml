@@ -1,0 +1,51 @@
+# A tag v<version> builds Ferret Menu (signed to run locally: no Apple developer team), tests it, and publishes
+# Ferret-Menu.zip on the release with SHA256SUMS and GitHub's build attestation
+# (`gh attestation verify Ferret-Menu.zip --repo ferret-project/ferret-menu`).
+name: Release
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: macos-26
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: brew install xcodegen
+      - run: xcodegen
+      - name: Version matches the tag
+        run: test "v$(grep -E '^ +MARKETING_VERSION:' project.yml | head -1 | sed -E 's/.*"(.*)".*/\1/')" = "${GITHUB_REF_NAME}"
+      - name: Test
+        run: xcodebuild -project FerretMenu.xcodeproj -scheme FerretMenu -derivedDataPath build test
+      - name: Build
+        run: xcodebuild -project FerretMenu.xcodeproj -scheme FerretMenu -configuration Release -derivedDataPath build build
+      - name: Package
+        run: |
+          mkdir dist
+          ditto -c -k --keepParent "build/Build/Products/Release/Ferret Menu.app" dist/Ferret-Menu.zip
+          cd dist && shasum -a 256 Ferret-Menu.zip > SHA256SUMS
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: dist/Ferret-Menu.zip
+      - name: Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "Download **Ferret-Menu.zip**, unzip it and move Ferret Menu to Applications. It isn't notarized: the first time, open it with System Settings → Privacy & Security → Open Anyway (see the README)."
+            echo
+            echo "Needs macOS 26. Check a download: \`shasum -a 256 -c SHA256SUMS\`, and that GitHub built it here: \`gh attestation verify Ferret-Menu.zip --repo ${GITHUB_REPOSITORY}\`."
+            echo
+            echo "## Changes"
+            git log --format='- %s' "$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || git rev-list --max-parents=0 HEAD)..${GITHUB_REF_NAME}"
+          } > notes.md
+          gh release create "${GITHUB_REF_NAME}" dist/* --title "Ferret Menu ${GITHUB_REF_NAME#v}" --notes-file notes.md

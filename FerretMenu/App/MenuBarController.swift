@@ -60,10 +60,44 @@ final class MenuBarController: NSObject, NSPopoverDelegate, NSMenuDelegate {
         guard let button = item.button else { return }
         NSApp.activate()
         if !popover.isShown {
-            popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+            if iconVisible(button) {
+                popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+            } else {
+                // A full menu bar (the notch) hides the paw: open below the middle of the menu bar instead.
+                let anchor = fallbackAnchor()
+                popover.show(relativeTo: anchor.contentView!.bounds, of: anchor.contentView!, preferredEdge: .minY)
+            }
         }
         popover.contentViewController?.view.window?.makeKey()
         model.windowOpened()
+    }
+
+    /// Whether macOS is showing the paw: hidden status items get a window off the menu bar, or none on screen.
+    private func iconVisible(_ button: NSStatusBarButton) -> Bool {
+        guard let window = button.window, window.occlusionState.contains(.visible), let screen = window.screen else { return false }
+        return window.frame.minY >= screen.visibleFrame.maxY - 1
+    }
+
+    private var anchorWindow: NSWindow?
+
+    /// A tiny invisible window just under the middle of the menu bar, for the window to hang from.
+    private func fallbackAnchor() -> NSWindow {
+        let screen = NSScreen.main ?? NSScreen.screens[0]
+        let frame = NSRect(x: screen.frame.midX - 1, y: screen.visibleFrame.maxY - 2, width: 2, height: 2)
+        let window = anchorWindow ?? NSWindow(contentRect: frame, styleMask: .borderless, backing: .buffered, defer: false)
+        window.setFrame(frame, display: false)
+        window.isOpaque = false
+        window.backgroundColor = .clear
+        window.level = .statusBar
+        window.ignoresMouseEvents = true
+        window.isReleasedWhenClosed = false
+        window.orderFrontRegardless()
+        anchorWindow = window
+        return window
+    }
+
+    func popoverDidClose(_ notification: Notification) {
+        anchorWindow?.orderOut(nil)
     }
 
     func popoverShouldClose(_ popover: NSPopover) -> Bool {
@@ -76,6 +110,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate, NSMenuDelegate {
     /// What the window shows (for debug snapshots).
     var windowView: NSView? { popover.contentViewController?.view }
     var badgeTitle: String { item.button?.title ?? "" }
+    var iconShown: Bool { item.button.map(iconVisible) ?? false }
 
     // MARK: - Badge
 
