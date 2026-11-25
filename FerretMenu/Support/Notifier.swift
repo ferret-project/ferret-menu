@@ -29,6 +29,8 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
 
     /// Opens Ferret Menu's own bell list (set by the app delegate).
     var openBell: () -> Void = {}
+    /// Opens a page of Ferret: in its web app or the browser (set by the app delegate).
+    var openPage: (URL) -> Void = { NSWorkspace.shared.open($0) }
 
     /// What clicking a notification does: several at once open the bell list here; one opens its own place in Ferret.
     enum Target: Equatable {
@@ -85,7 +87,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
         switch Self.target(of: response.notification.request.content.userInfo) {
         case .bell: await MainActor.run { openBell() }
-        case .web(let url): await MainActor.run { _ = NSWorkspace.shared.open(url) }
+        case .web(let url): await MainActor.run { openPage(url) }
         case nil: break
         }
     }

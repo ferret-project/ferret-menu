@@ -53,6 +53,19 @@ enum DebugHooks {
         case "undo-bought":
             await model.undoBought()
             log.notice("undo-bought done, list=\(model.shopping?.items.map(\.name) ?? [], privacy: .public)")
+        case "web-app":
+            // web-app:<path> as if chosen in Settings (debug builds only; a real choice goes through the file panel).
+            model.webApp = argument.isEmpty ? nil : WebApp.read(URL(fileURLWithPath: argument))
+            log.notice("web-app \(model.webApp?.name ?? "none", privacy: .public) \(model.webApp?.origin ?? "", privacy: .public) handles=\(model.webApp?.handlesLinks ?? false)")
+        case "open-link":
+            // open-link:<page address> — the web+ferret: link for it, opened from inside the sandbox.
+            if let page = URL(string: argument), let link = WebApp.link(to: page) {
+                let opened = NSWorkspace.shared.open(link)
+                log.notice("open-link \(link.absoluteString, privacy: .public) opened=\(opened) handler=\(NSWorkspace.shared.urlForApplication(toOpen: link)?.path ?? "none", privacy: .public)")
+            }
+        case "open":
+            // open:<route> as a click on a thing would.
+            model.open(argument)
         case "close":
             model.closeWindow()
         case "query":

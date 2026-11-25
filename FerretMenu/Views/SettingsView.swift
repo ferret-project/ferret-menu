@@ -59,6 +59,7 @@ private struct GeneralSettings: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+            WebAppSettings()
             if let updates = model.updates { UpdateSettings(updates: updates) }
         }
         .formStyle(.grouped)
@@ -200,5 +201,64 @@ private struct UpdateSettings: View {
             automatic = updates.automatic
             byItself = updates.downloadsByItself
         }
+    }
+}
+
+/// Where things open: the browser, or Ferret installed as a web app (Chrome, Edge or Brave).
+private struct WebAppSettings: View {
+    @Environment(AppModel.self) private var model
+    @State private var refused: String?
+    /// Bumped to look again whether the web app takes links (after opening it).
+    @State private var looked = 0
+
+    var body: some View {
+        Section {
+            LabeledContent("Open things in") {
+                Text(model.webApp.map { String(localized: "\($0.name) (web app)") } ?? String(localized: "Your browser"))
+            }
+            HStack {
+                Button("Choose Web App…", action: choose)
+                if model.webApp != nil {
+                    Button("Use the Browser") { model.webApp = nil; refused = nil }
+                }
+                Spacer()
+                if model.webApp != nil {
+                    Button("Check Again") { looked += 1 }.buttonStyle(.link)
+                }
+            }
+            if let refused {
+                Text(refused).font(.caption).foregroundStyle(.red)
+            } else if let app = model.webApp {
+                Text(status(app)).font(.caption).foregroundStyle(.secondary).id(looked)
+            }
+            Text("Ferret installed as an app with Chrome, Edge or Brave (Install Ferret in the browser's menu). Safari's web apps can't open pages for other apps.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func status(_ app: WebApp) -> String {
+        if let server = model.server, !app.isFor(server) {
+            return String(localized: "This web app is for \(app.host), but Ferret Menu is signed in to \(server.host() ?? ""). Things open in your browser.")
+        }
+        if !app.handlesLinks {
+            return String(localized: "Not ready yet: open the web app once so it learns to open pages for Ferret Menu (it needs Ferret 2026.11.28 or newer), and allow it if the browser asks. Until then, things open in your browser.")
+        }
+        return String(localized: "Things open in the web app.")
+    }
+
+    private func choose() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.application]
+        panel.directoryURL = URL(fileURLWithPath: "/Users/\(NSUserName())/Applications", isDirectory: true)
+        panel.prompt = String(localized: "Choose")
+        panel.message = String(localized: "Choose Ferret's web app (in Applications, or Chrome Apps in your home folder's Applications).")
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        guard let app = WebApp.read(url) else {
+            refused = String(localized: "That isn't a web app installed with Chrome, Edge or Brave.")
+            return
+        }
+        refused = nil
+        model.webApp = app
     }
 }

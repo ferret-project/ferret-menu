@@ -79,6 +79,7 @@ final class AppModel {
         self.defaults = defaults
         self.urlSession = urlSession
         policy = NotificationPolicy(known: nil)
+        webAppChoice = defaults.data(forKey: "webApp").flatMap { try? JSONDecoder().decode(WebApp.self, from: $0) }
     }
 
     // MARK: - Who's signed in
@@ -343,12 +344,33 @@ final class AppModel {
 
     // MARK: - Opening Ferret
 
-    /// A route of Ferret's web app (`#/…`) in the browser, where the person's own sign-in is.
+    /// A route of Ferret's web app (`#/…`): in Ferret's installed web app when one is chosen for this server, else in
+    /// the browser — either way where the person's own sign-in is.
     func open(_ route: String) {
         guard let server else { return }
-        NSWorkspace.shared.open(webURL(server: server, route: route))
+        openPage(webURL(server: server, route: route))
         closeWindow()
     }
+
+    /// A page of this Ferret: through the chosen web app when it's for this server and takes `web+ferret:` links.
+    func openPage(_ page: URL) {
+        if let app = webApp, let server, app.isFor(server), app.handlesLinks, let link = WebApp.link(to: page) {
+            NSWorkspace.shared.open(link)
+        } else {
+            NSWorkspace.shared.open(page)
+        }
+    }
+
+    /// Ferret's web app to open things in (Settings); nil: the browser.
+    var webApp: WebApp? {
+        get { webAppChoice }
+        set {
+            webAppChoice = newValue
+            defaults.set(newValue.flatMap { try? JSONEncoder().encode($0) }, forKey: "webApp")
+        }
+    }
+
+    private var webAppChoice: WebApp?
 
     func link(_ route: String) -> URL? {
         server.map { webURL(server: $0, route: route) }

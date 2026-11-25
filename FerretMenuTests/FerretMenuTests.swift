@@ -364,3 +364,37 @@ final class MemoryStore: SessionKeeping, @unchecked Sendable {
         #expect(info["CFBundleVersion"] as? String == info["CFBundleShortVersionString"] as? String)
     }
 }
+
+@Suite struct WebAppTests {
+    /// A pretend Chrome web app on disk.
+    private func app(start: String?, name: String = "Ferret") throws -> URL {
+        let url = FileManager.default.temporaryDirectory.appending(path: "webapp-\(UUID().uuidString)/\(name).app")
+        try FileManager.default.createDirectory(at: url.appending(path: "Contents"), withIntermediateDirectories: true)
+        var info: [String: Any] = ["CFBundleIdentifier": "com.google.Chrome.app.abc"]
+        if let start { info["CrAppModeShortcutURL"] = start; info["CrAppModeShortcutName"] = name }
+        (info as NSDictionary).write(to: url.appending(path: "Contents/Info.plist"), atomically: true)
+        return url
+    }
+
+    @Test func readsAChromeWebApp() throws {
+        let made = try #require(WebApp.read(try app(start: "https://Ferret.example.com/")))
+        #expect(made.origin == "https://ferret.example.com")
+        #expect(made.name == "Ferret")
+        #expect(made.isFor(URL(string: "https://ferret.example.com")!))
+        #expect(!made.isFor(URL(string: "http://ferret.example.com")!))
+        #expect(!made.isFor(URL(string: "https://other.example.com")!))
+        #expect(WebApp.read(try app(start: "http://10.0.0.2:8787/"))?.isFor(URL(string: "http://10.0.0.2:8787")!) == true)
+    }
+
+    @Test func anythingElseIsRefused() throws {
+        #expect(WebApp.read(try app(start: nil)) == nil)
+        #expect(WebApp.read(URL(fileURLWithPath: "/nowhere/Nothing.app")) == nil)
+    }
+
+    @Test func linksCarryTheWholeAddressEncoded() throws {
+        let link = try #require(WebApp.link(to: URL(string: "https://ferret.example.com/#/items/a b")!))
+        #expect(link.scheme == "web+ferret")
+        #expect(!link.absoluteString.dropFirst("web+ferret:".count).contains("#"))
+        #expect(link.absoluteString.dropFirst("web+ferret:".count).removingPercentEncoding == "https://ferret.example.com/#/items/a%20b")
+    }
+}

@@ -29,6 +29,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.menuBar = menuBar
         model.openSettings = { [weak self] in self?.openSettings() }
         Notifier.shared.openBell = { [weak menuBar] in menuBar?.show(on: .bell) }
+        Notifier.shared.openPage = { [weak model] in model?.openPage($0) }
         HotKey.shared.action = { [weak menuBar] in menuBar?.toggle() }
         HotKey.shared.register(Preferences.shortcut)
         model.start()
