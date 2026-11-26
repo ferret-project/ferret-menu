@@ -1,7 +1,7 @@
 import AppKit
 
 /// Ferret's web app installed on this Mac with Chrome, Edge or Brave, chosen in Settings. Pages open in it through
-/// `web+ferret:` links: Ferret's manifest makes the installed app their handler (Ferret 2026.11.28 or newer), and the
+/// `web+ferret:` links: Ferret's manifest makes the installed app their handler (Ferret 2026.11.29 or newer), and the
 /// app opens only pages of its own server. A sandboxed app can't start a web app at an address any other way.
 struct WebApp: Codable, Equatable, Sendable {
     /// Where the app is (`~/Applications/Chrome Apps.localized/Ferret.app`).

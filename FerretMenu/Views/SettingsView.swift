@@ -242,7 +242,7 @@ private struct WebAppSettings: View {
             return String(localized: "This web app is for \(app.host), but Ferret Menu is signed in to \(server.host() ?? ""). Things open in your browser.")
         }
         if !app.handlesLinks {
-            return String(localized: "Not ready yet: open the web app once so it learns to open pages for Ferret Menu (it needs Ferret 2026.11.28 or newer), and allow it if the browser asks. Until then, things open in your browser.")
+            return String(localized: "Not ready yet: open the web app once so it learns to open pages for Ferret Menu (it needs Ferret 2026.11.29 or newer), and allow it if the browser asks. Until then, things open in your browser.")
         }
         return String(localized: "Things open in the web app.")
     }

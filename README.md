@@ -28,7 +28,7 @@ Works with the hosted Ferret and your own: type its address (`ferret.example.com
 type `http://`, so a Ferret on plain HTTP on your home network is `http://192.168.1.20:8787`. A Ferret behind Cloudflare Access needs a service token (under **Cloudflare Access** on the sign-in
 screen).
 
-Needs **macOS 26** and **Ferret 2026.11.28 or newer**.
+Needs **macOS 26** and **Ferret 2026.11.29 or newer**.
 
 ## Installing
 
